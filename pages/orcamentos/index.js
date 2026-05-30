@@ -30,6 +30,9 @@ export default function Orcamentos() {
         *,
         clientes (
           nome
+        ),
+        pedidos (
+          id
         )
       `)
       .order('created_at', { ascending: false })
@@ -55,6 +58,9 @@ export default function Orcamentos() {
         *,
         clientes (
           nome
+        ),
+        pedidos (
+          id
         )
       `)
 
@@ -78,6 +84,9 @@ export default function Orcamentos() {
           *,
           clientes (
             nome
+          ),
+          pedidos (
+            id
           )
         `)
 
@@ -125,6 +134,38 @@ export default function Orcamentos() {
     setOrcamentos(orcamentos.filter(orcamento => orcamento.id !== id))
   }
 
+  async function converterEmPedido(orcamento) {
+    const confirmar = confirm('Deseja converter este orçamento em pedido?')
+
+    if (!confirmar) return
+
+    const { error } = await supabase
+      .from('pedidos')
+      .insert([
+        {
+          cliente_id: orcamento.cliente_id,
+          orcamento_id: orcamento.id,
+          valor: orcamento.valor,
+          status: 'Novo Pedido'
+        }
+      ])
+
+    if (error) {
+      console.log('Erro ao converter em pedido:', error)
+
+      if (error.code === '23505') {
+        alert('Este orçamento já foi convertido em pedido.')
+        return
+      }
+
+      alert('Erro ao converter orçamento em pedido.')
+      return
+    }
+
+    alert('Pedido criado com sucesso!')
+    carregarOrcamentos()
+  }
+
   function formatarMoeda(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
       style: 'currency',
@@ -142,6 +183,10 @@ export default function Orcamentos() {
     if (status === 'Recusado') return 'bg-red-100 text-red-700'
     if (status === 'Enviado') return 'bg-blue-100 text-blue-700'
     return 'bg-yellow-100 text-yellow-700'
+  }
+
+  function jaVirouPedido(orcamento) {
+    return orcamento.pedidos && orcamento.pedidos.length > 0
   }
 
   return (
@@ -205,7 +250,7 @@ export default function Orcamentos() {
                   </td>
 
                   <td className="p-4">
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3">
                       <button
                         onClick={() => editarOrcamento(orcamento)}
                         className="text-blue-600 hover:text-blue-800"
@@ -219,6 +264,21 @@ export default function Orcamentos() {
                       >
                         Excluir
                       </button>
+
+                      {orcamento.status === 'Aprovado' && !jaVirouPedido(orcamento) && (
+                        <button
+                          onClick={() => converterEmPedido(orcamento)}
+                          className="text-green-600 hover:text-green-800"
+                        >
+                          Converter em Pedido
+                        </button>
+                      )}
+
+                      {jaVirouPedido(orcamento) && (
+                        <span className="text-gray-500">
+                          Pedido criado
+                        </span>
+                      )}
                     </div>
                   </td>
                 </tr>
