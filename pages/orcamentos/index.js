@@ -7,6 +7,7 @@ export default function Orcamentos() {
   const [openModal, setOpenModal] = useState(false)
   const [orcamentoEditando, setOrcamentoEditando] = useState(null)
   const [clientes, setClientes] = useState([])
+  const [produtos, setProdutos] = useState([])
   const [orcamentos, setOrcamentos] = useState([])
 
   async function carregarClientes() {
@@ -23,6 +24,20 @@ export default function Orcamentos() {
     setClientes(data || [])
   }
 
+  async function carregarProdutos() {
+    const { data, error } = await supabase
+      .from('produtos')
+      .select('*')
+      .order('nome', { ascending: true })
+
+    if (error) {
+      console.log('Erro ao carregar produtos:', error)
+      return
+    }
+
+    setProdutos(data || [])
+  }
+
   async function carregarOrcamentos() {
     const { data, error } = await supabase
       .from('orcamentos')
@@ -33,6 +48,12 @@ export default function Orcamentos() {
         ),
         pedidos (
           id
+        ),
+        orcamento_itens (
+          *,
+          produtos (
+            nome
+          )
         )
       `)
       .order('created_at', { ascending: false })
@@ -47,13 +68,16 @@ export default function Orcamentos() {
 
   useEffect(() => {
     carregarClientes()
+    carregarProdutos()
     carregarOrcamentos()
   }, [])
 
   async function salvarNovoOrcamento(orcamento) {
+    const { itens, ...dadosOrcamento } = orcamento
+
     const { data, error } = await supabase
       .from('orcamentos')
-      .insert([orcamento])
+      .insert([dadosOrcamento])
       .select(`
         *,
         clientes (
@@ -61,6 +85,12 @@ export default function Orcamentos() {
         ),
         pedidos (
           id
+        ),
+        orcamento_itens (
+          *,
+          produtos (
+            nome
+          )
         )
       `)
 
@@ -70,25 +100,40 @@ export default function Orcamentos() {
       return
     }
 
-    setOrcamentos([data[0], ...orcamentos])
+    const orcamentoCriado = data[0]
+
+    if (itens && itens.length > 0) {
+      const itensParaSalvar = itens.map(item => ({
+        orcamento_id: orcamentoCriado.id,
+        produto_id: item.produto_id,
+        quantidade: item.quantidade,
+        valor_unitario: item.valor_unitario,
+        subtotal: item.subtotal
+      }))
+
+      const { error: erroItens } = await supabase
+        .from('orcamento_itens')
+        .insert(itensParaSalvar)
+
+      if (erroItens) {
+        console.log('Erro ao salvar itens do orçamento:', erroItens)
+        alert('Orçamento salvo, mas houve erro ao salvar os itens.')
+        return
+      }
+    }
+
+    await carregarOrcamentos()
     setOpenModal(false)
   }
 
   async function salvarOrcamento(orcamento) {
+    const { itens, ...dadosOrcamento } = orcamento
+
     if (orcamentoEditando) {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('orcamentos')
-        .update(orcamento)
+        .update(dadosOrcamento)
         .eq('id', orcamentoEditando.id)
-        .select(`
-          *,
-          clientes (
-            nome
-          ),
-          pedidos (
-            id
-          )
-        `)
 
       if (error) {
         console.log('Erro ao editar orçamento:', error)
@@ -96,12 +141,32 @@ export default function Orcamentos() {
         return
       }
 
-      setOrcamentos(
-        orcamentos.map(item =>
-          item.id === orcamentoEditando.id ? data[0] : item
-        )
-      )
+      await supabase
+        .from('orcamento_itens')
+        .delete()
+        .eq('orcamento_id', orcamentoEditando.id)
 
+      if (itens && itens.length > 0) {
+        const itensParaSalvar = itens.map(item => ({
+          orcamento_id: orcamentoEditando.id,
+          produto_id: item.produto_id,
+          quantidade: item.quantidade,
+          valor_unitario: item.valor_unitario,
+          subtotal: item.subtotal
+        }))
+
+        const { error: erroItens } = await supabase
+          .from('orcamento_itens')
+          .insert(itensParaSalvar)
+
+        if (erroItens) {
+          console.log('Erro ao salvar itens do orçamento:', erroItens)
+          alert('Orçamento editado, mas houve erro ao salvar os itens.')
+          return
+        }
+      }
+
+      await carregarOrcamentos()
       setOrcamentoEditando(null)
       setOpenModal(false)
       return
@@ -189,7 +254,53 @@ export default function Orcamentos() {
     return orcamento.pedidos && orcamento.pedidos.length > 0
   }
 
-  return (
+  function quantidadeItens(orcamento) {
+    return orcamento.orcamento_itens?.length || 0
+  }
+
+  function nomesProdutos(orcamento) {
+    const itens = orcamento.orcamento_itens || []
+
+    if (itens.length === 0) return 'Sem produtos'
+
+    return itens
+      .map(item => item.produtos?.nome)
+      .filter(Boolean)
+      .join(', ')
+  }
+
+  function enviarWhatsApp(orcamento) {
+  const cliente = clientes.find(
+    cliente => cliente.id === orcamento.cliente_id
+  )
+
+  if (!cliente?.whatsapp) {
+    alert('Este cliente não possui WhatsApp cadastrado.')
+    return
+  }
+
+  let mensagem = `Olá ${cliente.nome}!\n\n`
+  mensagem += `Segue seu orçamento:\n\n`
+
+  orcamento.orcamento_itens?.forEach(item => {
+  mensagem += `Produto: ${item.produtos?.nome}\n`
+  mensagem += `Valor unitário: ${formatarMoeda(item.valor_unitario)}\n`
+  mensagem += `Quantidade: ${item.quantidade}\n`
+  mensagem += `Subtotal: ${formatarMoeda(item.subtotal)}\n\n`
+})
+
+  mensagem += `------------------------------\n`
+  mensagem += `Total do orçamento: ${formatarMoeda(orcamento.valor)}\n\n`
+  mensagem += `Aguardamos sua aprovação.\n\n`
+  mensagem += `Eternaê`
+
+const telefone = cliente.whatsapp.replace(/\D/g, '')
+
+window.open(
+  `https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`,
+  '_blank'
+)
+}  return (
     <div className="flex min-h-screen bg-gray-100">
       <Sidebar />
 
@@ -221,7 +332,9 @@ export default function Orcamentos() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="text-left p-4 text-gray-600">Cliente</th>
+                <th className="text-left p-4 text-gray-600">Produtos</th>
                 <th className="text-left p-4 text-gray-600">Data</th>
+                <th className="text-left p-4 text-gray-600">Itens</th>
                 <th className="text-left p-4 text-gray-600">Valor</th>
                 <th className="text-left p-4 text-gray-600">Status</th>
                 <th className="text-left p-4 text-gray-600">Ações</th>
@@ -235,8 +348,16 @@ export default function Orcamentos() {
                     {orcamento.clientes?.nome || '-'}
                   </td>
 
+                  <td className="p-4 text-sm text-gray-600 max-w-xs">
+                    {nomesProdutos(orcamento)}
+                  </td>
+
                   <td className="p-4">
                     {formatarData(orcamento.created_at)}
+                  </td>
+
+                  <td className="p-4">
+                    {quantidadeItens(orcamento)} item(ns)
                   </td>
 
                   <td className="p-4">
@@ -256,6 +377,13 @@ export default function Orcamentos() {
                         className="text-blue-600 hover:text-blue-800"
                       >
                         Editar
+                      </button>
+
+                      <button
+                        onClick={() => enviarWhatsApp(orcamento)}
+                        className="text-green-600 hover:text-green-800"
+                      >
+                        WhatsApp
                       </button>
 
                       <button
@@ -287,7 +415,7 @@ export default function Orcamentos() {
               {orcamentos.length === 0 && (
                 <tr>
                   <td
-                    colSpan="5"
+                    colSpan="7"
                     className="p-6 text-center text-gray-500"
                   >
                     Nenhum orçamento cadastrado.
@@ -306,6 +434,7 @@ export default function Orcamentos() {
           }}
           onSave={salvarOrcamento}
           clientes={clientes}
+          produtos={produtos}
           orcamento={orcamentoEditando}
         />
       </main>

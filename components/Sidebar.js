@@ -25,6 +25,13 @@ export default function Sidebar() {
         </Link>
 
         <Link
+          href="/produtos"
+          className="hover:text-white transition"
+        >
+          🛍️ Produtos
+        </Link>
+
+        <Link
           href="/orcamentos"
           className="hover:text-white transition"
         >
@@ -32,24 +39,17 @@ export default function Sidebar() {
         </Link>
 
         <Link
-  href="/pedidos"
-  className="hover:text-white transition"
->
-  📦 Pedidos
-</Link>
-
-        <Link
-          href="#"
+          href="/pedidos"
           className="hover:text-white transition"
         >
-          📦 Estoque
+          📦 Pedidos
         </Link>
 
         <Link
           href="#"
           className="hover:text-white transition"
         >
-          💰 Precificação
+          📦 Estoque
         </Link>
 
         <Link

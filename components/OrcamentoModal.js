@@ -5,41 +5,111 @@ export default function OrcamentoModal({
   onClose,
   onSave,
   clientes,
+  produtos,
   orcamento
 }) {
   const [clienteId, setClienteId] = useState('')
-  const [valor, setValor] = useState('')
   const [status, setStatus] = useState('Pendente')
   const [observacoes, setObservacoes] = useState('')
+  const [itens, setItens] = useState([])
+
+  const [produtoId, setProdutoId] = useState('')
+  const [quantidade, setQuantidade] = useState(1)
+  const [valorUnitario, setValorUnitario] = useState('')
 
   useEffect(() => {
     if (orcamento) {
       setClienteId(orcamento.cliente_id || '')
-      setValor(orcamento.valor || '')
       setStatus(orcamento.status || 'Pendente')
       setObservacoes(orcamento.observacoes || '')
+      setItens(orcamento.orcamento_itens || [])
     } else {
       setClienteId('')
-      setValor('')
       setStatus('Pendente')
       setObservacoes('')
+      setItens([])
     }
-  }, [orcamento])
+
+    setProdutoId('')
+    setQuantidade(1)
+    setValorUnitario('')
+  }, [orcamento, open])
 
   if (!open) return null
+
+  function formatarMoeda(valor) {
+    return Number(valor || 0).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    })
+  }
+
+  function produtoSelecionado() {
+    return produtos.find(produto => produto.id === produtoId)
+  }
+
+  function selecionarProduto(id) {
+    setProdutoId(id)
+
+    const produto = produtos.find(item => item.id === id)
+
+    if (produto) {
+      setValorUnitario(produto.preco || '')
+    }
+  }
+
+  function adicionarItem() {
+    if (!produtoId) {
+      alert('Selecione um produto.')
+      return
+    }
+
+    const produto = produtoSelecionado()
+    const quantidadeNumero = Number(quantidade || 1)
+    const valorNumero = Number(valorUnitario || 0)
+    const subtotal = quantidadeNumero * valorNumero
+
+    setItens([
+      ...itens,
+      {
+        produto_id: produtoId,
+        produtos: {
+          nome: produto?.nome || 'Produto'
+        },
+        quantidade: quantidadeNumero,
+        valor_unitario: valorNumero,
+        subtotal
+      }
+    ])
+
+    setProdutoId('')
+    setQuantidade(1)
+    setValorUnitario('')
+  }
+
+  function removerItem(index) {
+    setItens(itens.filter((_, itemIndex) => itemIndex !== index))
+  }
+
+  function calcularTotal() {
+    return itens.reduce((total, item) => {
+      return total + Number(item.subtotal || 0)
+    }, 0)
+  }
 
   function handleSubmit() {
     onSave({
       cliente_id: clienteId,
-      valor: Number(valor || 0),
+      valor: calcularTotal(),
       status,
-      observacoes
+      observacoes,
+      itens
     })
   }
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white w-full max-w-2xl rounded-2xl p-8">
+      <div className="bg-white w-full max-w-4xl rounded-2xl p-8 max-h-[90vh] overflow-y-auto">
 
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-800">
@@ -81,20 +151,6 @@ export default function OrcamentoModal({
 
           <div>
             <label className="block text-sm text-gray-600 mb-2">
-              Valor
-            </label>
-
-            <input
-              type="number"
-              value={valor}
-              onChange={(e) => setValor(e.target.value)}
-              className="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-gray-900"
-              placeholder="0,00"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-600 mb-2">
               Status
             </label>
 
@@ -110,6 +166,103 @@ export default function OrcamentoModal({
             </select>
           </div>
 
+        </div>
+
+        <div className="mt-6 border rounded-2xl p-5">
+          <h3 className="font-bold text-gray-800 mb-4">
+            Itens do orçamento
+          </h3>
+
+          <div className="grid grid-cols-4 gap-4 mb-4">
+
+            <select
+              value={produtoId}
+              onChange={(e) => selecionarProduto(e.target.value)}
+              className="border rounded-xl px-4 py-3"
+            >
+              <option value="">Selecione um produto</option>
+
+              {produtos.map(produto => (
+                <option
+                  key={produto.id}
+                  value={produto.id}
+                >
+                  {produto.nome}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="number"
+              min="1"
+              value={quantidade}
+              onChange={(e) => setQuantidade(e.target.value)}
+              className="border rounded-xl px-4 py-3"
+              placeholder="Qtd"
+            />
+
+            <input
+              type="number"
+              value={valorUnitario}
+              onChange={(e) => setValorUnitario(e.target.value)}
+              className="border rounded-xl px-4 py-3"
+              placeholder="Valor unitário"
+            />
+
+            <button
+              onClick={adicionarItem}
+              className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
+            >
+              + Adicionar
+            </button>
+
+          </div>
+
+          {itens.length === 0 ? (
+            <p className="text-gray-500 text-sm">
+              Nenhum item adicionado.
+            </p>
+          ) : (
+            <div className="space-y-3">
+
+              {itens.map((item, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between bg-gray-50 rounded-xl p-4"
+                >
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      {item.produtos?.nome || 'Produto'}
+                    </p>
+
+                    <p className="text-sm text-gray-500">
+                      {item.quantidade} x {formatarMoeda(item.valor_unitario)}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <p className="font-semibold text-gray-800">
+                      {formatarMoeda(item.subtotal)}
+                    </p>
+
+                    <button
+                      onClick={() => removerItem(index)}
+                      className="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+            </div>
+          )}
+
+          <div className="flex justify-end mt-5">
+            <div className="bg-gray-900 text-white px-5 py-3 rounded-xl">
+              Total: {formatarMoeda(calcularTotal())}
+            </div>
+          </div>
         </div>
 
         <div className="mt-4">
