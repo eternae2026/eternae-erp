@@ -67,7 +67,7 @@ export default function Sidebar() {
         </Link>
 
         <Link
-          href="#"
+          href="/configuracoes"
           className="hover:text-white transition"
         >
           ⚙️ Configurações

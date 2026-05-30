@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import OrcamentoModal from '../../components/OrcamentoModal'
 import Sidebar from '../../components/Sidebar'
 import { supabase } from '../../lib/supabase'
@@ -9,6 +11,7 @@ export default function Orcamentos() {
   const [clientes, setClientes] = useState([])
   const [produtos, setProdutos] = useState([])
   const [orcamentos, setOrcamentos] = useState([])
+  const [configuracoes, setConfiguracoes] = useState(null)
 
   async function carregarClientes() {
     const { data, error } = await supabase
@@ -36,6 +39,21 @@ export default function Orcamentos() {
     }
 
     setProdutos(data || [])
+  }
+
+  async function carregarConfiguracoes() {
+    const { data, error } = await supabase
+      .from('configuracoes')
+      .select('*')
+      .limit(1)
+      .single()
+
+    if (error) {
+      console.log('Erro ao carregar configurações:', error)
+      return
+    }
+
+    setConfiguracoes(data)
   }
 
   async function carregarOrcamentos() {
@@ -69,6 +87,7 @@ export default function Orcamentos() {
   useEffect(() => {
     carregarClientes()
     carregarProdutos()
+    carregarConfiguracoes()
     carregarOrcamentos()
   }, [])
 
@@ -182,7 +201,6 @@ export default function Orcamentos() {
 
   async function excluirOrcamento(id) {
     const confirmar = confirm('Tem certeza que deseja excluir este orçamento?')
-
     if (!confirmar) return
 
     const { error } = await supabase
@@ -201,7 +219,6 @@ export default function Orcamentos() {
 
   async function converterEmPedido(orcamento) {
     const confirmar = confirm('Deseja converter este orçamento em pedido?')
-
     if (!confirmar) return
 
     const { error } = await supabase
@@ -270,37 +287,129 @@ export default function Orcamentos() {
   }
 
   function enviarWhatsApp(orcamento) {
-  const cliente = clientes.find(
-    cliente => cliente.id === orcamento.cliente_id
-  )
+    const cliente = clientes.find(
+      cliente => cliente.id === orcamento.cliente_id
+    )
 
-  if (!cliente?.whatsapp) {
-    alert('Este cliente não possui WhatsApp cadastrado.')
-    return
+    if (!cliente?.whatsapp) {
+      alert('Este cliente não possui WhatsApp cadastrado.')
+      return
+    }
+
+    let mensagem = `Olá ${cliente.nome}!\n\n`
+    mensagem += `Segue seu orçamento:\n\n`
+
+    orcamento.orcamento_itens?.forEach(item => {
+      mensagem += `Produto: ${item.produtos?.nome}\n`
+      mensagem += `Valor unitário: ${formatarMoeda(item.valor_unitario)}\n`
+      mensagem += `Quantidade: ${item.quantidade}\n`
+      mensagem += `Subtotal: ${formatarMoeda(item.subtotal)}\n\n`
+    })
+
+    mensagem += `------------------------------\n`
+    mensagem += `Total do orçamento: ${formatarMoeda(orcamento.valor)}\n\n`
+    mensagem += `${configuracoes?.mensagem_orcamento || 'Aguardamos sua aprovação.'}\n\n`
+    mensagem += `${configuracoes?.nome_empresa || 'Eternaê'}`
+
+    const telefone = cliente.whatsapp.replace(/\D/g, '')
+
+    window.open(
+      `https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`,
+      '_blank'
+    )
   }
 
-  let mensagem = `Olá ${cliente.nome}!\n\n`
-  mensagem += `Segue seu orçamento:\n\n`
+  function gerarPDF(orcamento) {
+    const doc = new jsPDF()
+    const clienteNome = orcamento.clientes?.nome || 'Cliente não informado'
+    const itens = orcamento.orcamento_itens || []
+    const nomeEmpresa = configuracoes?.nome_empresa || 'Eternaê'
 
-  orcamento.orcamento_itens?.forEach(item => {
-  mensagem += `Produto: ${item.produtos?.nome}\n`
-  mensagem += `Valor unitário: ${formatarMoeda(item.valor_unitario)}\n`
-  mensagem += `Quantidade: ${item.quantidade}\n`
-  mensagem += `Subtotal: ${formatarMoeda(item.subtotal)}\n\n`
-})
+    doc.setFontSize(22)
+    doc.text(nomeEmpresa, 105, 20, { align: 'center' })
 
-  mensagem += `------------------------------\n`
-  mensagem += `Total do orçamento: ${formatarMoeda(orcamento.valor)}\n\n`
-  mensagem += `Aguardamos sua aprovação.\n\n`
-  mensagem += `Eternaê`
+    doc.setFontSize(16)
+    doc.text('ORÇAMENTO', 105, 32, { align: 'center' })
 
-const telefone = cliente.whatsapp.replace(/\D/g, '')
+    doc.setFontSize(9)
 
-window.open(
-  `https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`,
-  '_blank'
-)
-}  return (
+    const contatos = []
+
+    if (configuracoes?.whatsapp) {
+      contatos.push(`WhatsApp: ${configuracoes.whatsapp}`)
+    }
+
+    if (configuracoes?.instagram) {
+      contatos.push(`Instagram: ${configuracoes.instagram}`)
+    }
+
+    if (configuracoes?.email) {
+      contatos.push(`E-mail: ${configuracoes.email}`)
+    }
+
+    if (contatos.length > 0) {
+      doc.text(contatos.join('  |  '), 105, 40, { align: 'center' })
+    }
+
+    doc.setFontSize(10)
+    doc.text(`Cliente: ${clienteNome}`, 14, 55)
+    doc.text(`Data: ${formatarData(orcamento.created_at)}`, 14, 62)
+    doc.text(`Status: ${orcamento.status}`, 14, 69)
+
+    autoTable(doc, {
+      startY: 80,
+      head: [['Produto', 'Qtd', 'Valor Unitário', 'Subtotal']],
+      body: itens.map(item => [
+        item.produtos?.nome || 'Produto',
+        item.quantidade,
+        formatarMoeda(item.valor_unitario),
+        formatarMoeda(item.subtotal)
+      ]),
+      styles: {
+        fontSize: 10
+      },
+      headStyles: {
+        fillColor: [31, 41, 55]
+      }
+    })
+
+    const finalY = doc.lastAutoTable.finalY || 90
+
+    doc.setFontSize(14)
+    doc.text(
+      `TOTAL: ${formatarMoeda(orcamento.valor)}`,
+      14,
+      finalY + 15
+    )
+
+    let textoFinalY = finalY + 30
+
+    if (configuracoes?.prazo_padrao) {
+      doc.setFontSize(10)
+      doc.text(`Prazo padrão: ${configuracoes.prazo_padrao}`, 14, textoFinalY)
+      textoFinalY += 8
+    }
+
+    doc.setFontSize(10)
+    doc.text(
+      configuracoes?.mensagem_orcamento || 'Aguardamos sua aprovação.',
+      14,
+      textoFinalY
+    )
+
+    textoFinalY += 8
+
+    if (configuracoes?.pix) {
+      doc.text(`PIX: ${configuracoes.pix}`, 14, textoFinalY)
+      textoFinalY += 8
+    }
+
+    doc.text(nomeEmpresa, 14, textoFinalY + 2)
+
+    doc.save(`orcamento-${clienteNome}.pdf`)
+  }
+
+  return (
     <div className="flex min-h-screen bg-gray-100">
       <Sidebar />
 
@@ -384,6 +493,13 @@ window.open(
                         className="text-green-600 hover:text-green-800"
                       >
                         WhatsApp
+                      </button>
+
+                      <button
+                        onClick={() => gerarPDF(orcamento)}
+                        className="text-purple-600 hover:text-purple-800"
+                      >
+                        PDF
                       </button>
 
                       <button
