@@ -49,14 +49,22 @@ export default function OrcamentoModal({
   }
 
   function selecionarProduto(id) {
-    setProdutoId(id)
+  setProdutoId(id)
 
-    const produto = produtos.find(item => item.id === id)
+  const produto = produtos.find(item => item.id === id)
 
-    if (produto) {
-      setValorUnitario(produto.preco || '')
-    }
+  if (!produto) {
+    setValorUnitario('')
+    return
   }
+
+  const precoProduto =
+    produto.preco_final ||
+    produto.preco ||
+    0
+
+  setValorUnitario(precoProduto)
+}
 
   function adicionarItem() {
     if (!produtoId) {
@@ -208,6 +216,12 @@ export default function OrcamentoModal({
               className="border rounded-xl px-4 py-3"
               placeholder="Valor unitário"
             />
+
+{produtoSelecionado() && (
+  <p className="text-xs text-green-700 mt-1">
+    Preço precificado: {formatarMoeda(produtoSelecionado()?.preco_final || produtoSelecionado()?.preco)}
+  </p>
+)}
 
             <button
               onClick={adicionarItem}

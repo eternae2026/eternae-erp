@@ -27,6 +27,10 @@ export default function Pedidos() {
           id,
           status
         ),
+        producoes (
+          id,
+          status
+        ),
         orcamentos (
           id,
           observacoes,
@@ -103,6 +107,27 @@ export default function Pedidos() {
     return pedido.financeiro.status
   }
 
+  function jaTemProducao(pedido) {
+    if (!pedido.producoes) return false
+
+    if (Array.isArray(pedido.producoes)) {
+      return pedido.producoes.length > 0
+    }
+
+    return Boolean(pedido.producoes.id)
+  }
+
+  function statusProducao(pedido) {
+    if (!pedido.producoes) return null
+
+    if (Array.isArray(pedido.producoes)) {
+      if (pedido.producoes.length === 0) return null
+      return pedido.producoes[0].status
+    }
+
+    return pedido.producoes.status
+  }
+
   function verPedido(pedido) {
     setPedidoSelecionado(pedido)
     setOpenDetalhes(true)
@@ -119,6 +144,10 @@ export default function Pedidos() {
           nome
         ),
         financeiro (
+          id,
+          status
+        ),
+        producoes (
           id,
           status
         ),
@@ -195,6 +224,53 @@ export default function Pedidos() {
     )
 
     alert('Cobrança gerada com sucesso!')
+  }
+
+  async function enviarParaProducao(pedido) {
+    if (statusPagamento(pedido) !== 'Recebido') {
+      alert('Só é possível enviar para produção após o pagamento ser recebido.')
+      return
+    }
+
+    const confirmar = confirm('Deseja enviar este pedido para produção?')
+
+    if (!confirmar) return
+
+    const { data, error } = await supabase
+      .from('producoes')
+      .insert([
+        {
+          pedido_id: pedido.id,
+          status: 'Aguardando Início'
+        }
+      ])
+      .select()
+
+    if (error) {
+      console.log('Erro ao enviar para produção:', error)
+
+      if (error.code === '23505') {
+        alert('Este pedido já foi enviado para produção.')
+        await carregarPedidos()
+        return
+      }
+
+      alert('Erro ao enviar pedido para produção.')
+      return
+    }
+
+    setPedidos(
+      pedidos.map(item =>
+        item.id === pedido.id
+          ? {
+              ...item,
+              producoes: data || []
+            }
+          : item
+      )
+    )
+
+    alert('Pedido enviado para produção com sucesso!')
   }
 
   function avancarPedido(pedido) {
@@ -315,6 +391,27 @@ export default function Pedidos() {
                               className="w-full mt-3 bg-green-600 text-white px-3 py-2 rounded-lg text-xs hover:bg-green-700"
                             >
                               💰 Gerar Cobrança
+                            </button>
+                          )}
+
+                          {jaTemProducao(pedido) ? (
+                            <div className="w-full mt-3 bg-purple-100 text-purple-700 px-3 py-2 rounded-lg text-xs font-semibold text-center">
+                              ✓ Produção Criada
+                              {statusProducao(pedido) && (
+                                <span> — {statusProducao(pedido)}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => enviarParaProducao(pedido)}
+                              disabled={statusPagamento(pedido) !== 'Recebido'}
+                              className={`w-full mt-3 px-3 py-2 rounded-lg text-xs font-semibold ${
+                                statusPagamento(pedido) !== 'Recebido'
+                                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                  : 'bg-purple-600 text-white hover:bg-purple-700'
+                              }`}
+                            >
+                              🏭 Enviar para Produção
                             </button>
                           )}
 

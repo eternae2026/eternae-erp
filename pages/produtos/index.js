@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
+import FichaTecnicaModal from '../../components/FichaTecnicaModal'
 import { supabase } from '../../lib/supabase'
 
 export default function Produtos() {
   const [produtos, setProdutos] = useState([])
+  const [insumos, setInsumos] = useState([])
+  const [composicao, setComposicao] = useState([])
+  const [produtoSelecionado, setProdutoSelecionado] = useState(null)
+  const [openFicha, setOpenFicha] = useState(false)
+
   const [nome, setNome] = useState('')
   const [categoria, setCategoria] = useState('')
   const [preco, setPreco] = useState('')
@@ -23,8 +29,43 @@ export default function Produtos() {
     setProdutos(data || [])
   }
 
+  async function carregarInsumos() {
+    const { data, error } = await supabase
+      .from('estoque')
+      .select('*')
+      .order('nome', { ascending: true })
+
+    if (error) {
+      console.log('Erro ao carregar insumos:', error)
+      return
+    }
+
+    setInsumos(data || [])
+  }
+
+  async function carregarComposicao(produtoId) {
+    const { data, error } = await supabase
+      .from('produto_composicao')
+      .select(`
+        *,
+        estoque (
+          nome,
+          custo_unitario
+        )
+      `)
+      .eq('produto_id', produtoId)
+
+    if (error) {
+      console.log('Erro ao carregar ficha técnica:', error)
+      return
+    }
+
+    setComposicao(data || [])
+  }
+
   useEffect(() => {
     carregarProdutos()
+    carregarInsumos()
   }, [])
 
   async function salvarProduto() {
@@ -35,7 +76,8 @@ export default function Produtos() {
           nome,
           categoria,
           preco: Number(preco || 0),
-          descricao
+          descricao,
+          tempo_producao: 0
         }
       ])
       .select()
@@ -72,6 +114,64 @@ export default function Produtos() {
     setProdutos(produtos.filter(produto => produto.id !== id))
   }
 
+  async function abrirFichaTecnica(produto) {
+    setProdutoSelecionado(produto)
+    await carregarComposicao(produto.id)
+    setOpenFicha(true)
+  }
+
+  async function adicionarInsumoFicha(dados) {
+    const { error } = await supabase
+      .from('produto_composicao')
+      .insert([dados])
+
+    if (error) {
+      console.log('Erro ao adicionar insumo:', error)
+      alert('Erro ao adicionar insumo.')
+      return
+    }
+
+    carregarComposicao(dados.produto_id)
+  }
+
+  async function removerInsumoFicha(id) {
+    const { error } = await supabase
+      .from('produto_composicao')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      console.log('Erro ao remover insumo:', error)
+      alert('Erro ao remover insumo.')
+      return
+    }
+
+    carregarComposicao(produtoSelecionado.id)
+  }
+
+  async function salvarTempoProducao(produtoId, tempo) {
+    const { data, error } = await supabase
+      .from('produtos')
+      .update({ tempo_producao: tempo })
+      .eq('id', produtoId)
+      .select()
+
+    if (error) {
+      console.log('Erro ao salvar tempo:', error)
+      alert('Erro ao salvar tempo de produção.')
+      return
+    }
+
+    setProdutos(
+      produtos.map(produto =>
+        produto.id === produtoId ? data[0] : produto
+      )
+    )
+
+    setProdutoSelecionado(data[0])
+    alert('Tempo de produção salvo!')
+  }
+
   function formatarMoeda(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
       style: 'currency',
@@ -91,7 +191,7 @@ export default function Produtos() {
           </h1>
 
           <p className="text-gray-500">
-            Cadastre os produtos que serão usados nos orçamentos.
+            Cadastre os produtos vendidos e configure suas fichas técnicas.
           </p>
         </div>
 
@@ -149,6 +249,7 @@ export default function Produtos() {
                 <th className="text-left p-4 text-gray-600">Produto</th>
                 <th className="text-left p-4 text-gray-600">Categoria</th>
                 <th className="text-left p-4 text-gray-600">Preço</th>
+                <th className="text-left p-4 text-gray-600">Tempo</th>
                 <th className="text-left p-4 text-gray-600">Ações</th>
               </tr>
             </thead>
@@ -179,12 +280,25 @@ export default function Produtos() {
                   </td>
 
                   <td className="p-4">
-                    <button
-                      onClick={() => excluirProduto(produto.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      Excluir
-                    </button>
+                    {produto.tempo_producao || 0} min
+                  </td>
+
+                  <td className="p-4">
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => abrirFichaTecnica(produto)}
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        ⚙️ Ficha Técnica
+                      </button>
+
+                      <button
+                        onClick={() => excluirProduto(produto.id)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        Excluir
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -192,7 +306,7 @@ export default function Produtos() {
               {produtos.length === 0 && (
                 <tr>
                   <td
-                    colSpan="4"
+                    colSpan="5"
                     className="p-6 text-center text-gray-500"
                   >
                     Nenhum produto cadastrado.
@@ -202,6 +316,21 @@ export default function Produtos() {
             </tbody>
           </table>
         </div>
+
+        <FichaTecnicaModal
+          open={openFicha}
+          onClose={() => {
+            setOpenFicha(false)
+            setProdutoSelecionado(null)
+            setComposicao([])
+          }}
+          produto={produtoSelecionado}
+          insumos={insumos}
+          composicao={composicao}
+          onAdicionarInsumo={adicionarInsumoFicha}
+          onRemoverInsumo={removerInsumoFicha}
+          onSalvarTempo={salvarTempoProducao}
+        />
 
       </main>
     </div>

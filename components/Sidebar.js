@@ -46,12 +46,26 @@ export default function Sidebar() {
         </Link>
 
         <Link
-          href="#"
+          href="/producoes"
+          className="hover:text-white transition"
+        >
+          🏭 Produção
+        </Link>
+
+        <Link
+          href="/estoque"
           className="hover:text-white transition"
         >
           📦 Estoque
         </Link>
 
+        <Link
+          href="/precificacao"
+          className="hover:text-white transition"
+       >
+          💰 Precificação
+        </Link>
+       
         <Link
           href="/financeiro"
           className="hover:text-white transition"
