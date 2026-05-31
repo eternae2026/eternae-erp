@@ -53,7 +53,7 @@ export default function Sidebar() {
         </Link>
 
         <Link
-          href="#"
+          href="/financeiro"
           className="hover:text-white transition"
         >
           💳 Financeiro
