@@ -74,7 +74,7 @@ export default function Sidebar() {
         </Link>
 
         <Link
-          href="#"
+          href="/relatorios/precificacao"
           className="hover:text-white transition"
         >
           📊 Relatórios

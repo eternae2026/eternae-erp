@@ -14,6 +14,7 @@ export default function Produtos() {
   const [categoria, setCategoria] = useState('')
   const [preco, setPreco] = useState('')
   const [descricao, setDescricao] = useState('')
+  const [margemLucro, setMargemLucro] = useState('60')
 
   async function carregarProdutos() {
     const { data, error } = await supabase
@@ -77,7 +78,8 @@ export default function Produtos() {
           categoria,
           preco: Number(preco || 0),
           descricao,
-          tempo_producao: 0
+          tempo_producao: 0,
+          margem_lucro: Number(margemLucro || 0)
         }
       ])
       .select()
@@ -93,6 +95,7 @@ export default function Produtos() {
     setCategoria('')
     setPreco('')
     setDescricao('')
+    setMargemLucro('60')
   }
 
   async function excluirProduto(id) {
@@ -200,7 +203,7 @@ export default function Produtos() {
             Novo Produto
           </h2>
 
-          <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-5 gap-4 mb-4">
             <input
               type="text"
               placeholder="Nome do produto"
@@ -222,6 +225,14 @@ export default function Produtos() {
               placeholder="Preço"
               value={preco}
               onChange={(e) => setPreco(e.target.value)}
+              className="border rounded-xl px-4 py-3"
+            />
+
+            <input
+              type="number"
+              placeholder="Margem (%)"
+              value={margemLucro}
+              onChange={(e) => setMargemLucro(e.target.value)}
               className="border rounded-xl px-4 py-3"
             />
 
@@ -250,6 +261,7 @@ export default function Produtos() {
                 <th className="text-left p-4 text-gray-600">Categoria</th>
                 <th className="text-left p-4 text-gray-600">Preço</th>
                 <th className="text-left p-4 text-gray-600">Tempo</th>
+                <th className="text-left p-4 text-gray-600">Margem</th>
                 <th className="text-left p-4 text-gray-600">Ações</th>
               </tr>
             </thead>
@@ -284,6 +296,10 @@ export default function Produtos() {
                   </td>
 
                   <td className="p-4">
+                    {produto.margem_lucro || 0}%
+                  </td>
+
+                  <td className="p-4">
                     <div className="flex gap-4">
                       <button
                         onClick={() => abrirFichaTecnica(produto)}
@@ -306,7 +322,7 @@ export default function Produtos() {
               {produtos.length === 0 && (
                 <tr>
                   <td
-                    colSpan="5"
+                    colSpan="6"
                     className="p-6 text-center text-gray-500"
                   >
                     Nenhum produto cadastrado.
