@@ -67,6 +67,20 @@ export default function Sidebar() {
         </Link>
        
         <Link
+          href="/metas"
+          className="hover:text-white transition"
+        > 
+          🎯 Metas
+        </Link>
+
+        <Link
+          href="/kits"
+          className="hover:text-white transition"
+        >
+          🎁 Kits
+        </Link>
+
+        <Link
           href="/financeiro"
           className="hover:text-white transition"
         >
