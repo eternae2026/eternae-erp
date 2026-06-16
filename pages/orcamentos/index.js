@@ -57,15 +57,12 @@ export default function Orcamentos() {
   }
 
   async function carregarOrcamentos() {
-    const { data, error } = await supabase
+    const { data: listaOrcamentos, error } = await supabase
       .from('orcamentos')
       .select(`
         *,
         clientes (
           nome
-        ),
-        pedidos (
-          id
         ),
         orcamento_itens (
           *,
@@ -81,7 +78,29 @@ export default function Orcamentos() {
       return
     }
 
-    setOrcamentos(data || [])
+    const { data: listaPedidos, error: erroPedidos } = await supabase
+      .from('pedidos')
+      .select('id, orcamento_id')
+
+    if (erroPedidos) {
+      console.log('Erro ao carregar pedidos vinculados:', erroPedidos)
+      setOrcamentos(listaOrcamentos || [])
+      return
+    }
+
+    const orcamentosTratados = (listaOrcamentos || []).map(orcamento => {
+      const pedido = (listaPedidos || []).find(
+        item => item.orcamento_id === orcamento.id
+      )
+
+      return {
+        ...orcamento,
+        pedido_criado: Boolean(pedido),
+        pedido_id: pedido?.id || null
+      }
+    })
+
+    setOrcamentos(orcamentosTratados)
   }
 
   useEffect(() => {
@@ -191,14 +210,23 @@ export default function Orcamentos() {
     setOpenModal(true)
   }
 
-  async function excluirOrcamento(id) {
+  function jaVirouPedido(orcamento) {
+    return Boolean(orcamento.pedido_criado)
+  }
+
+  async function excluirOrcamento(orcamento) {
+    if (jaVirouPedido(orcamento)) {
+      alert('Este orçamento já foi convertido em pedido e não pode ser excluído.')
+      return
+    }
+
     const confirmar = confirm('Tem certeza que deseja excluir este orçamento?')
     if (!confirmar) return
 
     const { error } = await supabase
       .from('orcamentos')
       .delete()
-      .eq('id', id)
+      .eq('id', orcamento.id)
 
     if (error) {
       console.log('Erro ao excluir orçamento:', error)
@@ -206,29 +234,34 @@ export default function Orcamentos() {
       return
     }
 
-    setOrcamentos(orcamentos.filter(orcamento => orcamento.id !== id))
+    setOrcamentos(
+      orcamentos.filter(item => item.id !== orcamento.id)
+    )
   }
 
   async function converterEmPedido(orcamento) {
-    const confirmar = confirm('Deseja converter este orçamento em pedido?')
+    const confirmar = confirm('Deseja aprovar este orçamento e gerar o pedido automaticamente?')
     if (!confirmar) return
 
-    const { error } = await supabase
+    const { data: pedidoCriado, error: erroPedido } = await supabase
       .from('pedidos')
       .insert([
         {
           cliente_id: orcamento.cliente_id,
           orcamento_id: orcamento.id,
           valor: orcamento.valor,
-          status: 'Novo Pedido'
+          etapa_producao: 'Aguardando Pagamento',
+          estoque_baixado: false
         }
       ])
+      .select()
 
-    if (error) {
-      console.log('Erro ao converter em pedido:', error)
+    if (erroPedido) {
+      console.log('Erro ao converter em pedido:', erroPedido)
 
-      if (error.code === '23505') {
+      if (erroPedido.code === '23505') {
         alert('Este orçamento já foi convertido em pedido.')
+        await carregarOrcamentos()
         return
       }
 
@@ -236,8 +269,43 @@ export default function Orcamentos() {
       return
     }
 
-    alert('Pedido criado com sucesso!')
-    carregarOrcamentos()
+    const novoPedido = pedidoCriado[0]
+
+    const { error: erroFinanceiro } = await supabase
+      .from('financeiro')
+      .insert([
+        {
+          pedido_id: novoPedido.id,
+          cliente_id: orcamento.cliente_id,
+          valor: orcamento.valor,
+          forma_pagamento: 'PIX',
+          status: 'Pendente'
+        }
+      ])
+
+    if (erroFinanceiro) {
+      console.log('Erro ao gerar cobrança:', erroFinanceiro)
+      alert('Pedido criado, mas houve erro ao gerar a cobrança financeira.')
+      await carregarOrcamentos()
+      return
+    }
+
+    const { error: erroStatus } = await supabase
+      .from('orcamentos')
+      .update({
+        status: 'Aprovado'
+      })
+      .eq('id', orcamento.id)
+
+    if (erroStatus) {
+      console.log('Erro ao aprovar orçamento:', erroStatus)
+      alert('Pedido e cobrança criados, mas houve erro ao marcar o orçamento como aprovado.')
+      await carregarOrcamentos()
+      return
+    }
+
+    alert('Orçamento aprovado, pedido criado e cobrança gerada com sucesso!')
+    await carregarOrcamentos()
   }
 
   function formatarMoeda(valor) {
@@ -257,10 +325,6 @@ export default function Orcamentos() {
     if (status === 'Recusado') return 'bg-red-100 text-red-700'
     if (status === 'Enviado') return 'bg-blue-100 text-blue-700'
     return 'bg-yellow-100 text-yellow-700'
-  }
-
-  function jaVirouPedido(orcamento) {
-    return orcamento.pedidos && orcamento.pedidos.length > 0
   }
 
   function quantidadeItens(orcamento) {
@@ -497,19 +561,21 @@ export default function Orcamentos() {
                         PDF
                       </button>
 
-                      <button
-                        onClick={() => excluirOrcamento(orcamento.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        Excluir
-                      </button>
+                      {!jaVirouPedido(orcamento) && (
+                        <button
+                          onClick={() => excluirOrcamento(orcamento)}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          Excluir
+                        </button>
+                      )}
 
-                      {orcamento.status === 'Aprovado' && !jaVirouPedido(orcamento) && (
+                      {!jaVirouPedido(orcamento) && (
                         <button
                           onClick={() => converterEmPedido(orcamento)}
                           className="text-green-600 hover:text-green-800"
                         >
-                          Converter em Pedido
+                          Aprovar e Gerar Pedido
                         </button>
                       )}
 

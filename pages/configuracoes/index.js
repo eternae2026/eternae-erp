@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 
 export default function Configuracoes() {
   const [configId, setConfigId] = useState(null)
+  const [precificacaoId, setPrecificacaoId] = useState(null)
 
   const [nomeEmpresa, setNomeEmpresa] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
@@ -18,44 +19,81 @@ export default function Configuracoes() {
   const [prazoPadrao, setPrazoPadrao] = useState('')
   const [mensagemOrcamento, setMensagemOrcamento] = useState('')
 
+  const [energia, setEnergia] = useState('')
+  const [internet, setInternet] = useState('')
+  const [canva, setCanva] = useState('')
+  const [dominio, setDominio] = useState('')
+  const [outrosCustos, setOutrosCustos] = useState('')
+  const [proLabore, setProLabore] = useState('')
+  const [percentualCrescimento, setPercentualCrescimento] = useState('')
   const [margemPadrao, setMargemPadrao] = useState('60')
+
+  useEffect(() => {
+    carregarConfiguracoes()
+    carregarConfiguracoesPrecificacao()
+  }, [])
 
   async function carregarConfiguracoes() {
     const { data, error } = await supabase
       .from('configuracoes')
       .select('*')
       .limit(1)
-      .single()
 
     if (error) {
       console.log('Erro ao carregar configurações:', error)
       return
     }
 
-    setConfigId(data.id)
+    const config = data?.[0]
 
-    setNomeEmpresa(data.nome_empresa || '')
-    setWhatsapp(data.whatsapp || '')
-    setTelefone(data.telefone || '')
-    setInstagram(data.instagram || '')
-    setEmail(data.email || '')
-    setSite(data.site || '')
-    setPix(data.pix || '')
-    setEndereco(data.endereco || '')
-    setCidade(data.cidade || '')
-    setEstado(data.estado || '')
-    setPrazoPadrao(data.prazo_padrao || '')
-    setMensagemOrcamento(data.mensagem_orcamento || '')
+    if (!config) return
 
-    setMargemPadrao(data.margem_padrao || 60)
+    setConfigId(config.id)
+
+    setNomeEmpresa(config.nome_empresa || '')
+    setWhatsapp(config.whatsapp || '')
+    setTelefone(config.telefone || '')
+    setInstagram(config.instagram || '')
+    setEmail(config.email || '')
+    setSite(config.site || '')
+    setPix(config.pix || '')
+    setEndereco(config.endereco || '')
+    setCidade(config.cidade || '')
+    setEstado(config.estado || '')
+    setPrazoPadrao(config.prazo_padrao || '')
+    setMensagemOrcamento(config.mensagem_orcamento || '')
+    setMargemPadrao(config.margem_padrao || 60)
   }
 
-  useEffect(() => {
-    carregarConfiguracoes()
-  }, [])
+  async function carregarConfiguracoesPrecificacao() {
+    const { data, error } = await supabase
+      .from('configuracoes_precificacao')
+      .select('*')
+      .limit(1)
+
+    if (error) {
+      console.log('Erro ao carregar parâmetros financeiros:', error)
+      return
+    }
+
+    const config = data?.[0]
+
+    if (!config) return
+
+    setPrecificacaoId(config.id)
+
+    setEnergia(config.energia || '')
+    setInternet(config.internet || '')
+    setCanva(config.canva || '')
+    setDominio(config.dominio || '')
+    setOutrosCustos(config.outros_custos || '')
+    setProLabore(config.pro_labore_desejado || '')
+    setPercentualCrescimento(config.percentual_crescimento || '')
+    setMargemPadrao(config.margem_padrao || 60)
+  }
 
   async function salvarConfiguracoes() {
-    const dados = {
+    const dadosEmpresa = {
       nome_empresa: nomeEmpresa,
       whatsapp,
       telefone,
@@ -71,18 +109,103 @@ export default function Configuracoes() {
       margem_padrao: Number(margemPadrao || 0)
     }
 
-    const { error } = await supabase
-      .from('configuracoes')
-      .update(dados)
-      .eq('id', configId)
+    let erroEmpresa = null
 
-    if (error) {
-      console.log('Erro ao salvar configurações:', error)
-      alert('Erro ao salvar configurações.')
+    if (configId) {
+      const { error } = await supabase
+        .from('configuracoes')
+        .update(dadosEmpresa)
+        .eq('id', configId)
+
+      erroEmpresa = error
+    } else {
+      const { data, error } = await supabase
+        .from('configuracoes')
+        .insert([dadosEmpresa])
+        .select()
+
+      erroEmpresa = error
+
+      if (data?.[0]) {
+        setConfigId(data[0].id)
+      }
+    }
+
+    if (erroEmpresa) {
+      console.log('Erro ao salvar configurações:', erroEmpresa)
+      alert('Erro ao salvar dados da empresa.')
+      return
+    }
+
+    const dadosFinanceiros = {
+      energia: Number(energia || 0),
+      internet: Number(internet || 0),
+      canva: Number(canva || 0),
+      dominio: Number(dominio || 0),
+      outros_custos: Number(outrosCustos || 0),
+      pro_labore_desejado: Number(proLabore || 0),
+      percentual_crescimento: Number(percentualCrescimento || 0),
+      margem_padrao: Number(margemPadrao || 0)
+    }
+
+    let erroFinanceiro = null
+
+    if (precificacaoId) {
+      const { error } = await supabase
+        .from('configuracoes_precificacao')
+        .update(dadosFinanceiros)
+        .eq('id', precificacaoId)
+
+      erroFinanceiro = error
+    } else {
+      const { data, error } = await supabase
+        .from('configuracoes_precificacao')
+        .insert([dadosFinanceiros])
+        .select()
+
+      erroFinanceiro = error
+
+      if (data?.[0]) {
+        setPrecificacaoId(data[0].id)
+      }
+    }
+
+    if (erroFinanceiro) {
+      console.log('Erro ao salvar parâmetros financeiros:', erroFinanceiro)
+      alert('Erro ao salvar parâmetros financeiros.')
       return
     }
 
     alert('Configurações salvas com sucesso!')
+  }
+
+  function formatarMoeda(valor) {
+    return Number(valor || 0).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    })
+  }
+
+  function custosFixosTotais() {
+    return (
+      Number(energia || 0) +
+      Number(internet || 0) +
+      Number(canva || 0) +
+      Number(dominio || 0) +
+      Number(outrosCustos || 0)
+    )
+  }
+
+  function metaMinima() {
+    return custosFixosTotais() + Number(proLabore || 0)
+  }
+
+  function reservaCrescimento() {
+    return metaMinima() * (Number(percentualCrescimento || 0) / 100)
+  }
+
+  function metaCrescimento() {
+    return metaMinima() + reservaCrescimento()
   }
 
   return (
@@ -97,11 +220,55 @@ export default function Configuracoes() {
           </h1>
 
           <p className="text-gray-500">
-            Dados da Eternaê usados em PDFs, mensagens e documentos.
+            Central de dados da empresa, parâmetros financeiros, metas e precificação.
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl p-8 shadow-sm max-w-5xl">
+        <div className="grid grid-cols-4 gap-6 mb-8">
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Custos fixos
+            </p>
+
+            <h2 className="text-2xl font-bold text-gray-800 mt-2">
+              {formatarMoeda(custosFixosTotais())}
+            </h2>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Pró-labore
+            </p>
+
+            <h2 className="text-2xl font-bold text-gray-800 mt-2">
+              {formatarMoeda(proLabore)}
+            </h2>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Meta mínima
+            </p>
+
+            <h2 className="text-2xl font-bold text-yellow-700 mt-2">
+              {formatarMoeda(metaMinima())}
+            </h2>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Meta crescimento
+            </p>
+
+            <h2 className="text-2xl font-bold text-blue-700 mt-2">
+              {formatarMoeda(metaCrescimento())}
+            </h2>
+          </div>
+
+        </div>
+
+        <div className="bg-white rounded-2xl p-8 shadow-sm mb-8">
 
           <h2 className="text-xl font-bold text-gray-800 mb-6">
             Dados da empresa
@@ -175,7 +342,7 @@ export default function Configuracoes() {
 
           </div>
 
-          <div className="grid grid-cols-4 gap-4 mt-4">
+          <div className="grid grid-cols-3 gap-4 mt-4">
 
             <input
               type="text"
@@ -201,14 +368,6 @@ export default function Configuracoes() {
               className="border rounded-xl px-4 py-3"
             />
 
-            <input
-              type="number"
-              placeholder="Margem padrão (%)"
-              value={margemPadrao}
-              onChange={(e) => setMargemPadrao(e.target.value)}
-              className="border rounded-xl px-4 py-3"
-            />
-
           </div>
 
           <div className="mt-4">
@@ -221,15 +380,135 @@ export default function Configuracoes() {
             />
           </div>
 
-          <div className="flex justify-end mt-6">
-            <button
-              onClick={salvarConfiguracoes}
-              className="bg-gray-900 text-white px-6 py-3 rounded-xl hover:bg-gray-800 transition"
-            >
-              Salvar Configurações
-            </button>
-          </div>
+        </div>
 
+        <div className="bg-white rounded-2xl p-8 shadow-sm mb-8">
+
+          <h2 className="text-xl font-bold text-gray-800 mb-6">
+            Parâmetros financeiros e metas
+          </h2>
+
+          <div className="grid grid-cols-4 gap-4">
+
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      Energia
+    </label>
+
+    <input
+      type="number"
+      value={energia}
+      onChange={(e) => setEnergia(e.target.value)}
+      className="w-full border rounded-xl px-4 py-3"
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      Internet
+    </label>
+
+    <input
+      type="number"
+      value={internet}
+      onChange={(e) => setInternet(e.target.value)}
+      className="w-full border rounded-xl px-4 py-3"
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      Canva
+    </label>
+
+    <input
+      type="number"
+      value={canva}
+      onChange={(e) => setCanva(e.target.value)}
+      className="w-full border rounded-xl px-4 py-3"
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      Domínio / Hospedagem
+    </label>
+
+    <input
+      type="number"
+      value={dominio}
+      onChange={(e) => setDominio(e.target.value)}
+      className="w-full border rounded-xl px-4 py-3"
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      Outros custos
+    </label>
+
+    <input
+      type="number"
+      value={outrosCustos}
+      onChange={(e) => setOutrosCustos(e.target.value)}
+      className="w-full border rounded-xl px-4 py-3"
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      Pró-labore desejado
+    </label>
+
+    <input
+      type="number"
+      value={proLabore}
+      onChange={(e) => setProLabore(e.target.value)}
+      className="w-full border rounded-xl px-4 py-3"
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      Crescimento desejado (%)
+    </label>
+
+    <input
+      type="number"
+      value={percentualCrescimento}
+      onChange={(e) => setPercentualCrescimento(e.target.value)}
+      className="w-full border rounded-xl px-4 py-3"
+    />
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-2">
+      Margem padrão (%)
+    </label>
+
+    <input
+      type="number"
+      value={margemPadrao}
+      onChange={(e) => setMargemPadrao(e.target.value)}
+      className="w-full border rounded-xl px-4 py-3"
+    />
+  </div>
+
+</div>
+
+          <p className="text-sm text-gray-500 mt-4">
+            Esses dados alimentam automaticamente Precificação, Metas e Dashboard.
+          </p>
+
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            onClick={salvarConfiguracoes}
+            className="bg-gray-900 text-white px-6 py-3 rounded-xl hover:bg-gray-800 transition"
+          >
+            Salvar Configurações
+          </button>
         </div>
 
       </main>
