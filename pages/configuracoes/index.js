@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 
 export default function Configuracoes() {
   const [configId, setConfigId] = useState(null)
+
   const [nomeEmpresa, setNomeEmpresa] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
   const [telefone, setTelefone] = useState('')
@@ -16,6 +17,8 @@ export default function Configuracoes() {
   const [estado, setEstado] = useState('')
   const [prazoPadrao, setPrazoPadrao] = useState('')
   const [mensagemOrcamento, setMensagemOrcamento] = useState('')
+
+  const [margemPadrao, setMargemPadrao] = useState('60')
 
   async function carregarConfiguracoes() {
     const { data, error } = await supabase
@@ -30,6 +33,7 @@ export default function Configuracoes() {
     }
 
     setConfigId(data.id)
+
     setNomeEmpresa(data.nome_empresa || '')
     setWhatsapp(data.whatsapp || '')
     setTelefone(data.telefone || '')
@@ -42,6 +46,8 @@ export default function Configuracoes() {
     setEstado(data.estado || '')
     setPrazoPadrao(data.prazo_padrao || '')
     setMensagemOrcamento(data.mensagem_orcamento || '')
+
+    setMargemPadrao(data.margem_padrao || 60)
   }
 
   useEffect(() => {
@@ -61,7 +67,8 @@ export default function Configuracoes() {
       cidade,
       estado,
       prazo_padrao: prazoPadrao,
-      mensagem_orcamento: mensagemOrcamento
+      mensagem_orcamento: mensagemOrcamento,
+      margem_padrao: Number(margemPadrao || 0)
     }
 
     const { error } = await supabase
@@ -168,7 +175,7 @@ export default function Configuracoes() {
 
           </div>
 
-          <div className="grid grid-cols-3 gap-4 mt-4">
+          <div className="grid grid-cols-4 gap-4 mt-4">
 
             <input
               type="text"
@@ -191,6 +198,14 @@ export default function Configuracoes() {
               placeholder="Estado"
               value={estado}
               onChange={(e) => setEstado(e.target.value)}
+              className="border rounded-xl px-4 py-3"
+            />
+
+            <input
+              type="number"
+              placeholder="Margem padrão (%)"
+              value={margemPadrao}
+              onChange={(e) => setMargemPadrao(e.target.value)}
               className="border rounded-xl px-4 py-3"
             />
 

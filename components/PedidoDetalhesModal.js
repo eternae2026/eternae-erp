@@ -31,6 +31,15 @@ export default function PedidoDetalhesModal({
     return pedido.financeiro.status
   }
 
+  function nomeItem(item) {
+    return item.nome_item || item.produtos?.nome || 'Item'
+  }
+
+  function tipoItem(item) {
+    if (item.tipo_item === 'kit') return '🎁 Kit'
+    return '🛍️ Produto'
+  }
+
   const totalItens = calcularTotalItens()
 
   return (
@@ -124,7 +133,11 @@ export default function PedidoDetalhesModal({
                 >
                   <div>
                     <p className="font-semibold text-gray-800">
-                      {item.produtos?.nome || 'Produto'}
+                      {nomeItem(item)}
+                    </p>
+
+                    <p className="text-xs text-gray-400 mb-1">
+                      {tipoItem(item)}
                     </p>
 
                     <p className="text-sm text-gray-500">

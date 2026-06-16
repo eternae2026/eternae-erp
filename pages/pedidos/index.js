@@ -8,12 +8,28 @@ export default function Pedidos() {
   const [openDetalhes, setOpenDetalhes] = useState(false)
   const [pedidoSelecionado, setPedidoSelecionado] = useState(null)
 
-  const statusPedidos = [
-    'Novo Pedido',
+  const etapasProducao = [
     'Aguardando Pagamento',
-    'Arte / Aprovação',
-    'Produção'
+    'Arte',
+    'Aguardando Aprovação',
+    'Produção',
+    'Pronto',
+    'Entregue'
   ]
+
+  const orcamentoItensSelect = `
+    id,
+    produto_id,
+    nome_item,
+    tipo_item,
+    kit_id,
+    quantidade,
+    valor_unitario,
+    subtotal,
+    produtos (
+      nome
+    )
+  `
 
   async function carregarPedidos() {
     const { data, error } = await supabase
@@ -35,13 +51,7 @@ export default function Pedidos() {
           id,
           observacoes,
           orcamento_itens (
-            id,
-            quantidade,
-            valor_unitario,
-            subtotal,
-            produtos (
-              nome
-            )
+            ${orcamentoItensSelect}
           )
         )
       `)
@@ -78,12 +88,16 @@ export default function Pedidos() {
     }, 0)
   }
 
-  function pedidosPorStatus(status) {
-    return pedidos.filter(pedido => pedido.status === status)
+  function etapaPedido(pedido) {
+    return pedido.etapa_producao || 'Aguardando Pagamento'
   }
 
-  function indiceStatus(status) {
-    return statusPedidos.indexOf(status)
+  function pedidosPorEtapa(etapa) {
+    return pedidos.filter(pedido => etapaPedido(pedido) === etapa)
+  }
+
+  function indiceEtapa(etapa) {
+    return etapasProducao.indexOf(etapa)
   }
 
   function jaTemCobranca(pedido) {
@@ -107,36 +121,159 @@ export default function Pedidos() {
     return pedido.financeiro.status
   }
 
-  function jaTemProducao(pedido) {
-    if (!pedido.producoes) return false
-
-    if (Array.isArray(pedido.producoes)) {
-      return pedido.producoes.length > 0
-    }
-
-    return Boolean(pedido.producoes.id)
-  }
-
-  function statusProducao(pedido) {
-    if (!pedido.producoes) return null
-
-    if (Array.isArray(pedido.producoes)) {
-      if (pedido.producoes.length === 0) return null
-      return pedido.producoes[0].status
-    }
-
-    return pedido.producoes.status
-  }
-
   function verPedido(pedido) {
     setPedidoSelecionado(pedido)
     setOpenDetalhes(true)
   }
 
-  async function atualizarStatusPedido(pedido, novoStatus) {
+  async function baixarEstoqueDoPedido(pedido) {
+    const itens = pedido.orcamentos?.orcamento_itens || []
+
+    if (itens.length === 0) {
+      alert('Este pedido não possui itens para baixa de estoque.')
+      return false
+    }
+
+    const produtosConsumidos = []
+
+    const itensProduto = itens.filter(item => item.produto_id)
+    const itensKit = itens.filter(item => item.kit_id)
+
+    itensProduto.forEach(item => {
+      produtosConsumidos.push({
+        produto_id: item.produto_id,
+        quantidade: Number(item.quantidade || 1)
+      })
+    })
+
+    if (itensKit.length > 0) {
+      const kitIds = itensKit.map(item => item.kit_id)
+
+      const { data: kitItens, error: erroKitItens } = await supabase
+        .from('kit_itens')
+        .select('*')
+        .in('kit_id', kitIds)
+
+      if (erroKitItens) {
+        console.log('Erro ao carregar itens do kit:', erroKitItens)
+        alert('Erro ao carregar itens do kit para baixa de estoque.')
+        return false
+      }
+
+      itensKit.forEach(itemKit => {
+        const quantidadeKit = Number(itemKit.quantidade || 1)
+
+        const itensDoKit = (kitItens || []).filter(
+          kitItem => kitItem.kit_id === itemKit.kit_id
+        )
+
+        itensDoKit.forEach(kitItem => {
+          produtosConsumidos.push({
+            produto_id: kitItem.produto_id,
+            quantidade: Number(kitItem.quantidade || 1) * quantidadeKit
+          })
+        })
+      })
+    }
+
+    if (produtosConsumidos.length === 0) {
+      alert('Nenhum produto encontrado para baixa de estoque.')
+      return false
+    }
+
+    const produtoIds = [...new Set(produtosConsumidos.map(item => item.produto_id))]
+
+    const { data: composicoes, error: erroComposicoes } = await supabase
+      .from('produto_composicao')
+      .select('*')
+      .in('produto_id', produtoIds)
+
+    if (erroComposicoes) {
+      console.log('Erro ao carregar composição:', erroComposicoes)
+      alert('Erro ao carregar composição dos produtos.')
+      return false
+    }
+
+    if (!composicoes || composicoes.length === 0) {
+      alert('Os produtos deste pedido não possuem composição cadastrada.')
+      return false
+    }
+
+    const consumoPorInsumo = {}
+
+    produtosConsumidos.forEach(produto => {
+      const composicoesProduto = composicoes.filter(
+        composicao => composicao.produto_id === produto.produto_id
+      )
+
+      composicoesProduto.forEach(composicao => {
+        const consumo =
+          Number(composicao.quantidade || 0) *
+          Number(produto.quantidade || 1)
+
+        consumoPorInsumo[composicao.insumo_id] =
+          Number(consumoPorInsumo[composicao.insumo_id] || 0) + consumo
+      })
+    })
+
+    const insumoIds = Object.keys(consumoPorInsumo)
+
+    const { data: estoqueAtual, error: erroEstoque } = await supabase
+      .from('estoque')
+      .select('*')
+      .in('id', insumoIds)
+
+    if (erroEstoque) {
+      console.log('Erro ao carregar estoque:', erroEstoque)
+      alert('Erro ao carregar estoque.')
+      return false
+    }
+
+    for (const insumoId of insumoIds) {
+      const itemEstoque = estoqueAtual?.find(item => item.id === insumoId)
+
+      if (!itemEstoque) continue
+
+      const novaQuantidade =
+        Number(itemEstoque.quantidade_disponivel || 0) -
+        Number(consumoPorInsumo[insumoId] || 0)
+
+      const { error: erroAtualizarEstoque } = await supabase
+        .from('estoque')
+        .update({
+          quantidade_disponivel: novaQuantidade
+        })
+        .eq('id', insumoId)
+
+      if (erroAtualizarEstoque) {
+        console.log('Erro ao atualizar estoque:', erroAtualizarEstoque)
+        alert('Erro ao atualizar estoque.')
+        return false
+      }
+    }
+
+    return true
+  }
+
+  async function atualizarEtapaPedido(pedido, novaEtapa) {
+    const dadosAtualizacao = {
+      etapa_producao: novaEtapa
+    }
+
+    if (
+      novaEtapa === 'Pronto' &&
+      !pedido.estoque_baixado
+    ) {
+      const baixou = await baixarEstoqueDoPedido(pedido)
+
+      if (!baixou) return
+
+      dadosAtualizacao.estoque_baixado = true
+    }
+
     const { data, error } = await supabase
       .from('pedidos')
-      .update({ status: novoStatus })
+      .update(dadosAtualizacao)
       .eq('id', pedido.id)
       .select(`
         *,
@@ -155,20 +292,14 @@ export default function Pedidos() {
           id,
           observacoes,
           orcamento_itens (
-            id,
-            quantidade,
-            valor_unitario,
-            subtotal,
-            produtos (
-              nome
-            )
+            ${orcamentoItensSelect}
           )
         )
       `)
 
     if (error) {
-      console.log('Erro ao atualizar pedido:', error)
-      alert('Erro ao atualizar pedido.')
+      console.log('Erro ao atualizar etapa:', error)
+      alert('Erro ao atualizar etapa do pedido.')
       return
     }
 
@@ -226,230 +357,182 @@ export default function Pedidos() {
     alert('Cobrança gerada com sucesso!')
   }
 
-  async function enviarParaProducao(pedido) {
-    if (statusPagamento(pedido) !== 'Recebido') {
-      alert('Só é possível enviar para produção após o pagamento ser recebido.')
-      return
-    }
-
-    const confirmar = confirm('Deseja enviar este pedido para produção?')
-
-    if (!confirmar) return
-
-    const { data, error } = await supabase
-      .from('producoes')
-      .insert([
-        {
-          pedido_id: pedido.id,
-          status: 'Aguardando Início'
-        }
-      ])
-      .select()
-
-    if (error) {
-      console.log('Erro ao enviar para produção:', error)
-
-      if (error.code === '23505') {
-        alert('Este pedido já foi enviado para produção.')
-        await carregarPedidos()
-        return
-      }
-
-      alert('Erro ao enviar pedido para produção.')
-      return
-    }
-
-    setPedidos(
-      pedidos.map(item =>
-        item.id === pedido.id
-          ? {
-              ...item,
-              producoes: data || []
-            }
-          : item
-      )
-    )
-
-    alert('Pedido enviado para produção com sucesso!')
-  }
-
   function avancarPedido(pedido) {
-    const indiceAtual = indiceStatus(pedido.status)
+    const etapaAtual = etapaPedido(pedido)
+    const indiceAtual = indiceEtapa(etapaAtual)
 
-    if (indiceAtual === statusPedidos.length - 1) return
+    if (indiceAtual === etapasProducao.length - 1) return
 
-    const proximoStatus = statusPedidos[indiceAtual + 1]
+    const proximaEtapa = etapasProducao[indiceAtual + 1]
 
-    atualizarStatusPedido(pedido, proximoStatus)
+    if (proximaEtapa === 'Arte' && statusPagamento(pedido) !== 'Recebido') {
+      alert('Só é possível avançar para Arte após o pagamento ser recebido.')
+      return
+    }
+
+    atualizarEtapaPedido(pedido, proximaEtapa)
   }
 
   function voltarPedido(pedido) {
-    const indiceAtual = indiceStatus(pedido.status)
+    const etapaAtual = etapaPedido(pedido)
+    const indiceAtual = indiceEtapa(etapaAtual)
 
     if (indiceAtual === 0) return
 
-    const statusAnterior = statusPedidos[indiceAtual - 1]
+    const etapaAnterior = etapasProducao[indiceAtual - 1]
 
-    atualizarStatusPedido(pedido, statusAnterior)
+    atualizarEtapaPedido(pedido, etapaAnterior)
+  }
+
+  function corEtapa(etapa) {
+    if (etapa === 'Aguardando Pagamento') return 'bg-yellow-50'
+    if (etapa === 'Arte') return 'bg-blue-50'
+    if (etapa === 'Aguardando Aprovação') return 'bg-orange-50'
+    if (etapa === 'Produção') return 'bg-purple-50'
+    if (etapa === 'Pronto') return 'bg-green-50'
+    if (etapa === 'Entregue') return 'bg-gray-50'
+
+    return 'bg-white'
   }
 
   return (
     <div className="flex min-h-screen bg-gray-100">
       <Sidebar />
 
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-8 overflow-hidden">
 
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-800">
               Pedidos
             </h1>
 
             <p className="text-gray-500">
-              Acompanhe a produção, entrega e cobrança dos pedidos.
+              Acompanhe pagamento, arte, aprovação, produção e entrega dos pedidos.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="overflow-x-auto pb-4">
+          <div className="flex gap-5 min-w-max">
 
-          {statusPedidos.map(status => {
-            const lista = pedidosPorStatus(status)
+            {etapasProducao.map(etapa => {
+              const lista = pedidosPorEtapa(etapa)
 
-            return (
-              <div
-                key={status}
-                className="bg-white rounded-2xl p-5 shadow-sm min-h-[300px]"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-gray-800">
-                    {status}
-                  </h3>
+              return (
+                <div
+                  key={etapa}
+                  className={`${corEtapa(etapa)} w-80 shrink-0 rounded-2xl p-4 shadow-sm h-[calc(100vh-170px)] flex flex-col`}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold text-gray-800 text-sm leading-5">
+                      {etapa}
+                    </h3>
 
-                  <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs">
-                    {lista.length}
-                  </span>
-                </div>
-
-                {lista.length === 0 ? (
-                  <p className="text-gray-500 text-sm">
-                    Nenhum pedido nesta etapa.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {lista.map(pedido => {
-                      const indiceAtual = indiceStatus(pedido.status)
-
-                      return (
-                        <div
-                          key={pedido.id}
-                          className="border rounded-xl p-4 bg-gray-50"
-                        >
-                          <p className="font-semibold text-gray-800">
-                            {pedido.clientes?.nome || '-'}
-                          </p>
-
-                          <p className="text-sm text-gray-500 mt-1">
-                            Valor: {formatarMoeda(calcularTotalPedido(pedido))}
-                          </p>
-
-                          <p className="text-xs text-gray-400 mt-2">
-                            Pedido #{pedido.id.slice(0, 8)}
-                          </p>
-
-                          <button
-                            onClick={() => verPedido(pedido)}
-                            className="w-full mt-4 bg-gray-900 text-white px-3 py-2 rounded-lg text-xs hover:bg-gray-800"
-                          >
-                            👁 Ver Pedido
-                          </button>
-
-                          {jaTemCobranca(pedido) ? (
-                            <div className="space-y-2 mt-3">
-
-                              <button
-                                disabled
-                                className="w-full bg-green-100 text-green-700 px-3 py-2 rounded-lg text-xs cursor-not-allowed font-semibold"
-                              >
-                                ✓ Cobrança Gerada
-                              </button>
-
-                              {statusPagamento(pedido) === 'Recebido' ? (
-                                <div className="w-full bg-green-50 text-green-700 px-3 py-2 rounded-lg text-xs font-semibold text-center">
-                                  🟢 Pagamento Recebido
-                                </div>
-                              ) : (
-                                <div className="w-full bg-yellow-50 text-yellow-700 px-3 py-2 rounded-lg text-xs font-semibold text-center">
-                                  🟡 Aguardando Pagamento
-                                </div>
-                              )}
-
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => gerarCobranca(pedido)}
-                              className="w-full mt-3 bg-green-600 text-white px-3 py-2 rounded-lg text-xs hover:bg-green-700"
-                            >
-                              💰 Gerar Cobrança
-                            </button>
-                          )}
-
-                          {jaTemProducao(pedido) ? (
-                            <div className="w-full mt-3 bg-purple-100 text-purple-700 px-3 py-2 rounded-lg text-xs font-semibold text-center">
-                              ✓ Produção Criada
-                              {statusProducao(pedido) && (
-                                <span> — {statusProducao(pedido)}</span>
-                              )}
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => enviarParaProducao(pedido)}
-                              disabled={statusPagamento(pedido) !== 'Recebido'}
-                              className={`w-full mt-3 px-3 py-2 rounded-lg text-xs font-semibold ${
-                                statusPagamento(pedido) !== 'Recebido'
-                                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                  : 'bg-purple-600 text-white hover:bg-purple-700'
-                              }`}
-                            >
-                              🏭 Enviar para Produção
-                            </button>
-                          )}
-
-                          <div className="flex justify-between gap-2 mt-4">
-                            <button
-                              onClick={() => voltarPedido(pedido)}
-                              disabled={indiceAtual === 0}
-                              className={`px-3 py-2 rounded-lg text-xs ${
-                                indiceAtual === 0
-                                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                  : 'bg-gray-900 text-white hover:bg-gray-800'
-                              }`}
-                            >
-                              ← Voltar
-                            </button>
-
-                            <button
-                              onClick={() => avancarPedido(pedido)}
-                              disabled={indiceAtual === statusPedidos.length - 1}
-                              className={`px-3 py-2 rounded-lg text-xs ${
-                                indiceAtual === statusPedidos.length - 1
-                                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                  : 'bg-gray-900 text-white hover:bg-gray-800'
-                              }`}
-                            >
-                              Avançar →
-                            </button>
-                          </div>
-
-                        </div>
-                      )
-                    })}
+                    <span className="bg-white text-gray-600 px-2 py-1 rounded-full text-xs shadow-sm">
+                      {lista.length}
+                    </span>
                   </div>
-                )}
-              </div>
-            )
-          })}
 
+                  <div className="flex-1 overflow-y-auto pr-1">
+                    {lista.length === 0 ? (
+                      <p className="text-gray-500 text-sm">
+                        Nenhum pedido nesta etapa.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {lista.map(pedido => {
+                          const indiceAtual = indiceEtapa(etapaPedido(pedido))
+                          const pagamentoRecebido = statusPagamento(pedido) === 'Recebido'
+
+                          return (
+                            <div
+                              key={pedido.id}
+                              className="border rounded-xl p-4 bg-white shadow-sm"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <p className="font-semibold text-gray-800">
+                                    {pedido.clientes?.nome || '-'}
+                                  </p>
+
+                                  <p className="text-sm text-gray-500 mt-1">
+                                    {formatarMoeda(calcularTotalPedido(pedido))}
+                                  </p>
+                                </div>
+
+                                <span className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
+                                  pagamentoRecebido
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-yellow-100 text-yellow-700'
+                                }`}>
+                                  {pagamentoRecebido ? 'Pago' : 'Pendente'}
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-gray-400 mt-2">
+                                Pedido #{pedido.id.slice(0, 8)}
+                              </p>
+
+                              <div className="grid grid-cols-2 gap-2 mt-4">
+                                <button
+                                  onClick={() => verPedido(pedido)}
+                                  className="bg-gray-900 text-white px-3 py-2 rounded-lg text-xs hover:bg-gray-800"
+                                >
+                                  Ver
+                                </button>
+
+                                {!jaTemCobranca(pedido) ? (
+                                  <button
+                                    onClick={() => gerarCobranca(pedido)}
+                                    className="bg-green-600 text-white px-3 py-2 rounded-lg text-xs hover:bg-green-700"
+                                  >
+                                    Cobrar
+                                  </button>
+                                ) : (
+                                  <div className="bg-green-50 text-green-700 px-3 py-2 rounded-lg text-xs font-semibold text-center">
+                                    Cobrança OK
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex justify-between gap-2 mt-3">
+                                <button
+                                  onClick={() => voltarPedido(pedido)}
+                                  disabled={indiceAtual === 0}
+                                  className={`flex-1 px-3 py-2 rounded-lg text-xs ${
+                                    indiceAtual === 0
+                                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                      : 'bg-gray-800 text-white hover:bg-gray-900'
+                                  }`}
+                                >
+                                  ←
+                                </button>
+
+                                <button
+                                  onClick={() => avancarPedido(pedido)}
+                                  disabled={indiceAtual === etapasProducao.length - 1}
+                                  className={`flex-1 px-3 py-2 rounded-lg text-xs ${
+                                    indiceAtual === etapasProducao.length - 1
+                                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                      : 'bg-gray-800 text-white hover:bg-gray-900'
+                                  }`}
+                                >
+                                  →
+                                </button>
+                              </div>
+
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+
+          </div>
         </div>
 
         <PedidoDetalhesModal

@@ -1,3 +1,4 @@
+import SimuladorMetaModal from '../../components/SimuladorMetaModal'
 import { useEffect, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
 import { supabase } from '../../lib/supabase'
@@ -6,6 +7,7 @@ export default function Metas() {
   const [configuracao, setConfiguracao] = useState(null)
   const [faturadoMes, setFaturadoMes] = useState(0)
   const [produtos, setProdutos] = useState([])
+  const [openSimulador, setOpenSimulador] = useState(false)
 
   async function carregarConfiguracao() {
     const { data, error } = await supabase
@@ -111,13 +113,9 @@ export default function Metas() {
     return metaMinima() + reservaCrescimento()
   }
 
-  function metaIdeal() {
-    const margem = Number(configuracao?.margem_padrao || 0)
+  function progressoMetaCrescimento() {
+    const meta = metaCrescimento()
 
-    return metaCrescimento() * (1 + margem / 100)
-  }
-
-  function progresso(meta) {
     if (meta <= 0) return 0
 
     const percentual = (faturadoMes / meta) * 100
@@ -125,14 +123,14 @@ export default function Metas() {
     return percentual > 100 ? 100 : percentual
   }
 
-  function faltaPara(meta) {
-    const falta = meta - faturadoMes
+  function faltaParaMetaCrescimento() {
+    const falta = metaCrescimento() - faturadoMes
 
     return falta > 0 ? falta : 0
   }
 
-  function corProgresso(meta) {
-    const percentual = progresso(meta)
+  function corBarraMeta() {
+    const percentual = progressoMetaCrescimento()
 
     if (percentual >= 100) return 'bg-green-600'
     if (percentual >= 70) return 'bg-yellow-500'
@@ -144,6 +142,30 @@ export default function Metas() {
       month: 'long',
       year: 'numeric'
     })
+  }
+
+  function diasDoMes() {
+    const hoje = new Date()
+
+    return new Date(
+      hoje.getFullYear(),
+      hoje.getMonth() + 1,
+      0
+    ).getDate()
+  }
+
+  function diaAtual() {
+    return new Date().getDate()
+  }
+
+  function diasRestantes() {
+    return diasDoMes() - diaAtual()
+  }
+
+  function projecaoMes() {
+    if (diaAtual() <= 0) return 0
+
+    return (faturadoMes / diaAtual()) * diasDoMes()
   }
 
   function lucroProduto(produto) {
@@ -158,8 +180,18 @@ export default function Metas() {
 
     if (lucro <= 0) return 0
 
-    return Math.ceil(faltaPara(metaCrescimento()) / lucro)
+    return Math.ceil(faltaParaMetaCrescimento() / lucro)
   }
+
+  function produtosSimulacao() {
+  return produtos
+    .map(produto => ({
+      ...produto,
+      lucro: lucroProduto(produto),
+      unidades: unidadesNecessarias(produto)
+    }))
+    .sort((a, b) => a.unidades - b.unidades)
+}
 
   if (!configuracao) {
     return (
@@ -187,11 +219,11 @@ export default function Metas() {
           </h1>
 
           <p className="text-gray-500">
-            Acompanhe quanto já entrou no mês e quanto falta para atingir seus objetivos.
+            Acompanhe o avanço do mês, projeção de fechamento e metas da Eternaê.
           </p>
 
           <p className="text-sm text-gray-400 mt-1">
-            Referência: {mesAtual()}
+            Referência: {mesAtual()} • Restam {diasRestantes()} dia(s) no mês
           </p>
         </div>
 
@@ -227,20 +259,6 @@ export default function Metas() {
 
           <div className="bg-white rounded-2xl p-6 shadow-sm">
             <p className="text-gray-500">
-              Meta ideal
-            </p>
-
-            <h2 className="text-2xl font-bold text-green-700 mt-2">
-              {formatarMoeda(metaIdeal())}
-            </h2>
-
-            <p className="text-xs text-gray-500 mt-2">
-              Crescimento + margem estratégica
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">
               Faturado no mês
             </p>
 
@@ -253,136 +271,127 @@ export default function Metas() {
             </p>
           </div>
 
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Projeção do mês
+            </p>
+
+            <h2 className={`text-2xl font-bold mt-2 ${
+              projecaoMes() >= metaCrescimento()
+                ? 'text-green-700'
+                : 'text-red-600'
+            }`}>
+              {formatarMoeda(projecaoMes())}
+            </h2>
+
+            <p className="text-xs text-gray-500 mt-2">
+              Com base no ritmo atual
+            </p>
+          </div>
+
         </div>
 
-        <div className="grid grid-cols-3 gap-6 mb-8">
+        <div className="bg-white rounded-2xl p-8 shadow-sm mb-8">
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h3 className="font-bold text-gray-800 mb-2">
-              🎯 Meta mínima
-            </h3>
+          <div className="flex items-start justify-between gap-6 mb-6">
 
-            <p className="text-sm text-gray-500 mb-4">
-              Falta: {formatarMoeda(faltaPara(metaMinima()))}
-            </p>
+            <div>
+              <p className="text-gray-500">
+                Meta do mês
+              </p>
 
-            <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
-              <div
-                className={`${corProgresso(metaMinima())} h-4 rounded-full`}
-                style={{ width: `${progresso(metaMinima())}%` }}
-              />
+              <h2 className="text-3xl font-bold text-gray-800 mt-1">
+                {formatarNumero(progressoMetaCrescimento())}% atingido
+              </h2>
+
+              <p className="text-gray-500 mt-2">
+                Faltam <strong>{formatarMoeda(faltaParaMetaCrescimento())}</strong> para atingir a meta de crescimento.
+              </p>
             </div>
 
-            <p className="text-sm font-semibold text-gray-700 mt-3">
-              {formatarNumero(progresso(metaMinima()))}% atingido
-            </p>
+            <div className="text-right">
+              <p className="text-gray-500">
+                Meta crescimento
+              </p>
+
+              <h3 className="text-2xl font-bold text-blue-700">
+                {formatarMoeda(metaCrescimento())}
+              </h3>
+            </div>
+
           </div>
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h3 className="font-bold text-gray-800 mb-2">
-              🚀 Meta crescimento
-            </h3>
-
-            <p className="text-sm text-gray-500 mb-4">
-              Falta: {formatarMoeda(faltaPara(metaCrescimento()))}
-            </p>
-
-            <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
-              <div
-                className={`${corProgresso(metaCrescimento())} h-4 rounded-full`}
-                style={{ width: `${progresso(metaCrescimento())}%` }}
-              />
-            </div>
-
-            <p className="text-sm font-semibold text-gray-700 mt-3">
-              {formatarNumero(progresso(metaCrescimento()))}% atingido
-            </p>
+          <div className="w-full bg-gray-100 rounded-full h-5 overflow-hidden">
+            <div
+              className={`${corBarraMeta()} h-5 rounded-full`}
+              style={{ width: `${progressoMetaCrescimento()}%` }}
+            />
           </div>
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h3 className="font-bold text-gray-800 mb-2">
-              🏆 Meta ideal
-            </h3>
+          <div className="grid grid-cols-3 gap-4 mt-6">
 
-            <p className="text-sm text-gray-500 mb-4">
-              Falta: {formatarMoeda(faltaPara(metaIdeal()))}
-            </p>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-sm text-gray-500">
+                Faturado
+              </p>
 
-            <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
-              <div
-                className={`${corProgresso(metaIdeal())} h-4 rounded-full`}
-                style={{ width: `${progresso(metaIdeal())}%` }}
-              />
+              <p className="font-bold text-gray-800">
+                {formatarMoeda(faturadoMes)}
+              </p>
             </div>
 
-            <p className="text-sm font-semibold text-gray-700 mt-3">
-              {formatarNumero(progresso(metaIdeal()))}% atingido
-            </p>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-sm text-gray-500">
+                Falta para meta
+              </p>
+
+              <p className="font-bold text-red-600">
+                {formatarMoeda(faltaParaMetaCrescimento())}
+              </p>
+            </div>
+
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-sm text-gray-500">
+                Projeção
+              </p>
+
+              <p className={`font-bold ${
+                projecaoMes() >= metaCrescimento()
+                  ? 'text-green-700'
+                  : 'text-red-600'
+              }`}>
+                {formatarMoeda(projecaoMes())}
+              </p>
+            </div>
+
           </div>
 
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-8">
 
-          <h2 className="text-xl font-bold text-gray-800 mb-2">
-            🎯 Simulador para Meta Crescimento
-          </h2>
+  <div className="flex items-center justify-between">
 
-          <p className="text-gray-500 mb-6">
-            Faltam {formatarMoeda(faltaPara(metaCrescimento()))} para atingir a meta de crescimento.
-          </p>
+    <div>
+      <h2 className="text-xl font-bold text-gray-800">
+        📈 Simulador de Meta
+      </h2>
 
-          {produtos.length === 0 ? (
-            <p className="text-gray-500">
-              Nenhum produto precificado encontrado para simulação.
-            </p>
-          ) : (
-            <div className="grid grid-cols-3 gap-6">
+      <p className="text-gray-500 mt-1">
+        Descubra quais produtos exigem menos vendas para atingir sua meta.
+      </p>
+    </div>
 
-              {produtos.map(produto => (
-                <div
-                  key={produto.id}
-                  className="border rounded-2xl p-5"
-                >
-                  <h3 className="font-bold text-gray-800 mb-4">
-                    {produto.nome}
-                  </h3>
+    <button
+      onClick={() => setOpenSimulador(true)}
+      className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
+    >
+      Abrir Simulador
+    </button>
 
-                  <p className="text-sm text-gray-500">
-                    Preço atual
-                  </p>
+  </div>
 
-                  <p className="text-lg font-bold text-gray-800 mb-4">
-                    {formatarMoeda(produto.preco || produto.preco_final)}
-                  </p>
-
-                  <p className="text-sm text-gray-500">
-                    Lucro estimado por venda
-                  </p>
-
-                  <p className="text-lg font-bold text-green-700 mb-4">
-                    {formatarMoeda(lucroProduto(produto))}
-                  </p>
-
-                  <p className="text-sm text-gray-500">
-                    Necessário vender
-                  </p>
-
-                  <p className="text-3xl font-bold text-blue-700">
-                    {unidadesNecessarias(produto)}
-                  </p>
-
-                  <p className="text-sm text-gray-500">
-                    unidades
-                  </p>
-
-                </div>
-              ))}
-
-            </div>
-          )}
-
-        </div>
+</div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm">
 
@@ -425,6 +434,12 @@ export default function Metas() {
           </div>
 
         </div>
+
+<SimuladorMetaModal
+  open={openSimulador}
+  onClose={() => setOpenSimulador(false)}
+  produtos={produtosSimulacao()}
+/>
 
       </main>
     </div>

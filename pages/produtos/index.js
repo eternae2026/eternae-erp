@@ -12,7 +12,6 @@ export default function Produtos() {
 
   const [nome, setNome] = useState('')
   const [categoria, setCategoria] = useState('')
-  const [preco, setPreco] = useState('')
   const [descricao, setDescricao] = useState('')
   const [margemLucro, setMargemLucro] = useState('60')
 
@@ -74,13 +73,12 @@ export default function Produtos() {
       .from('produtos')
       .insert([
         {
-          nome,
-          categoria,
-          preco: Number(preco || 0),
-          descricao,
-          tempo_producao: 0,
-          margem_lucro: Number(margemLucro || 0)
-        }
+  nome,
+  categoria,
+  descricao,
+  tempo_producao: 0,
+  margem_lucro: Number(margemLucro || 0)
+}
       ])
       .select()
 
@@ -93,7 +91,6 @@ export default function Produtos() {
     setProdutos([data[0], ...produtos])
     setNome('')
     setCategoria('')
-    setPreco('')
     setDescricao('')
     setMargemLucro('60')
   }
@@ -203,7 +200,7 @@ export default function Produtos() {
             Novo Produto
           </h2>
 
-          <div className="grid grid-cols-5 gap-4 mb-4">
+          <div className="grid grid-cols-4 gap-4 mb-4">
             <input
               type="text"
               placeholder="Nome do produto"
@@ -217,14 +214,6 @@ export default function Produtos() {
               placeholder="Categoria"
               value={categoria}
               onChange={(e) => setCategoria(e.target.value)}
-              className="border rounded-xl px-4 py-3"
-            />
-
-            <input
-              type="number"
-              placeholder="Preço"
-              value={preco}
-              onChange={(e) => setPreco(e.target.value)}
               className="border rounded-xl px-4 py-3"
             />
 
@@ -259,8 +248,7 @@ export default function Produtos() {
               <tr>
                 <th className="text-left p-4 text-gray-600">Produto</th>
                 <th className="text-left p-4 text-gray-600">Categoria</th>
-                <th className="text-left p-4 text-gray-600">Preço</th>
-                <th className="text-left p-4 text-gray-600">Tempo</th>
+                                <th className="text-left p-4 text-gray-600">Tempo</th>
                 <th className="text-left p-4 text-gray-600">Margem</th>
                 <th className="text-left p-4 text-gray-600">Ações</th>
               </tr>
@@ -285,10 +273,6 @@ export default function Produtos() {
 
                   <td className="p-4">
                     {produto.categoria || '-'}
-                  </td>
-
-                  <td className="p-4">
-                    {formatarMoeda(produto.preco)}
                   </td>
 
                   <td className="p-4">
@@ -322,7 +306,7 @@ export default function Produtos() {
               {produtos.length === 0 && (
                 <tr>
                   <td
-                    colSpan="6"
+                    colSpan="5"
                     className="p-6 text-center text-gray-500"
                   >
                     Nenhum produto cadastrado.

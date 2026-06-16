@@ -3,15 +3,19 @@ export default function StatCard({
   value
 }) {
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-sm">
+    <div className="bg-white rounded-2xl p-6 shadow-sm h-40 flex flex-col">
 
-      <p className="text-gray-500 mb-2">
-        {title}
-      </p>
+      <div className="min-h-[48px]">
+        <p className="text-gray-500 text-sm leading-5">
+          {title}
+        </p>
+      </div>
 
-      <h3 className="text-3xl font-bold text-gray-800">
-        {value}
-      </h3>
+      <div className="flex-1 flex items-center justify-center">
+        <h3 className="text-[2rem] font-bold text-gray-800 text-center leading-none">
+          {value}
+        </h3>
+      </div>
 
     </div>
   )

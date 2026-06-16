@@ -93,6 +93,33 @@ export default function Estoque() {
     })
   }
 
+  function formatarNumero(valor) {
+    return Number(valor || 0).toLocaleString('pt-BR', {
+      maximumFractionDigits: 2
+    })
+  }
+
+  function totalInsumos() {
+    return itensEstoque.length
+  }
+
+  function totalBaixo() {
+    return itensEstoque.filter(item => statusEstoque(item) === 'Baixo').length
+  }
+
+  function totalEsgotado() {
+    return itensEstoque.filter(item => statusEstoque(item) === 'Esgotado').length
+  }
+
+  function valorTotalEstoque() {
+    return itensEstoque.reduce((total, item) => {
+      return total + (
+        quantidadeLivre(item) *
+        Number(item.custo_unitario || 0)
+      )
+    }, 0)
+  }
+
   return (
     <div className="flex min-h-screen bg-gray-100">
       <Sidebar />
@@ -120,6 +147,50 @@ export default function Estoque() {
           >
             ➕ Novo Insumo
           </button>
+
+        </div>
+
+        <div className="grid grid-cols-4 gap-6 mb-8">
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Total de insumos
+            </p>
+
+            <h2 className="text-2xl font-bold text-gray-800 mt-2">
+              {totalInsumos()}
+            </h2>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Estoque baixo
+            </p>
+
+            <h2 className="text-2xl font-bold text-yellow-600 mt-2">
+              {totalBaixo()}
+            </h2>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Esgotados
+            </p>
+
+            <h2 className="text-2xl font-bold text-red-600 mt-2">
+              {totalEsgotado()}
+            </h2>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Valor em estoque
+            </p>
+
+            <h2 className="text-2xl font-bold text-green-700 mt-2">
+              {formatarMoeda(valorTotalEstoque())}
+            </h2>
+          </div>
 
         </div>
 
@@ -152,9 +223,15 @@ export default function Estoque() {
                 return (
                   <tr
                     key={item.id}
-                    className="border-t"
+                    className={`border-t ${
+                      status === 'Esgotado'
+                        ? 'bg-red-50'
+                        : status === 'Baixo'
+                          ? 'bg-yellow-50'
+                          : ''
+                    }`}
                   >
-                    <td className="p-4">
+                    <td className="p-4 font-semibold text-gray-800">
                       {item.nome}
                     </td>
 
@@ -163,19 +240,19 @@ export default function Estoque() {
                     </td>
 
                     <td className="p-4">
-                      {item.quantidade_disponivel}
+                      {formatarNumero(item.quantidade_disponivel)}
                     </td>
 
                     <td className="p-4">
-                      {item.quantidade_reservada}
+                      {formatarNumero(item.quantidade_reservada)}
                     </td>
 
                     <td className="p-4 font-semibold">
-                      {quantidadeLivre(item)}
+                      {formatarNumero(quantidadeLivre(item))}
                     </td>
 
                     <td className="p-4">
-                      {item.estoque_minimo}
+                      {formatarNumero(item.estoque_minimo)}
                     </td>
 
                     <td className="p-4">
@@ -187,7 +264,7 @@ export default function Estoque() {
                     </td>
 
                     <td className="p-4">
-                      {item.quantidade_compra}
+                      {formatarNumero(item.quantidade_compra)}
                     </td>
 
                     <td className="p-4 font-semibold">

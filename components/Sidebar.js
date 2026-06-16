@@ -45,12 +45,14 @@ export default function Sidebar() {
           📦 Pedidos
         </Link>
 
-        <Link
-          href="/producoes"
-          className="hover:text-white transition"
-        >
-          🏭 Produção
-        </Link>
+        {/* 
+<Link
+  href="/producoes"
+  className="hover:text-white transition"
+>
+  🏭 Produção
+</Link>
+*/}
 
         <Link
           href="/estoque"
@@ -88,7 +90,7 @@ export default function Sidebar() {
         </Link>
 
         <Link
-          href="/relatorios/precificacao"
+          href="/relatorios"
           className="hover:text-white transition"
         >
           📊 Relatórios

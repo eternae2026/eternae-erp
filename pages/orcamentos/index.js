@@ -97,21 +97,7 @@ export default function Orcamentos() {
     const { data, error } = await supabase
       .from('orcamentos')
       .insert([dadosOrcamento])
-      .select(`
-        *,
-        clientes (
-          nome
-        ),
-        pedidos (
-          id
-        ),
-        orcamento_itens (
-          *,
-          produtos (
-            nome
-          )
-        )
-      `)
+      .select()
 
     if (error) {
       console.log('Erro ao salvar orçamento:', error)
@@ -125,6 +111,9 @@ export default function Orcamentos() {
       const itensParaSalvar = itens.map(item => ({
         orcamento_id: orcamentoCriado.id,
         produto_id: item.produto_id,
+        kit_id: item.kit_id,
+        tipo_item: item.tipo_item,
+        nome_item: item.nome_item,
         quantidade: item.quantidade,
         valor_unitario: item.valor_unitario,
         subtotal: item.subtotal
@@ -169,6 +158,9 @@ export default function Orcamentos() {
         const itensParaSalvar = itens.map(item => ({
           orcamento_id: orcamentoEditando.id,
           produto_id: item.produto_id,
+          kit_id: item.kit_id,
+          tipo_item: item.tipo_item,
+          nome_item: item.nome_item,
           quantidade: item.quantidade,
           valor_unitario: item.valor_unitario,
           subtotal: item.subtotal
@@ -275,14 +267,17 @@ export default function Orcamentos() {
     return orcamento.orcamento_itens?.length || 0
   }
 
+  function nomeItem(item) {
+    return item.nome_item || item.produtos?.nome || 'Item'
+  }
+
   function nomesProdutos(orcamento) {
     const itens = orcamento.orcamento_itens || []
 
-    if (itens.length === 0) return 'Sem produtos'
+    if (itens.length === 0) return 'Sem itens'
 
     return itens
-      .map(item => item.produtos?.nome)
-      .filter(Boolean)
+      .map(item => nomeItem(item))
       .join(', ')
   }
 
@@ -300,7 +295,7 @@ export default function Orcamentos() {
     mensagem += `Segue seu orçamento:\n\n`
 
     orcamento.orcamento_itens?.forEach(item => {
-      mensagem += `Produto: ${item.produtos?.nome}\n`
+      mensagem += `Item: ${nomeItem(item)}\n`
       mensagem += `Valor unitário: ${formatarMoeda(item.valor_unitario)}\n`
       mensagem += `Quantidade: ${item.quantidade}\n`
       mensagem += `Subtotal: ${formatarMoeda(item.subtotal)}\n\n`
@@ -358,9 +353,9 @@ export default function Orcamentos() {
 
     autoTable(doc, {
       startY: 80,
-      head: [['Produto', 'Qtd', 'Valor Unitário', 'Subtotal']],
+      head: [['Item', 'Qtd', 'Valor Unitário', 'Subtotal']],
       body: itens.map(item => [
-        item.produtos?.nome || 'Produto',
+        nomeItem(item),
         item.quantidade,
         formatarMoeda(item.valor_unitario),
         formatarMoeda(item.subtotal)

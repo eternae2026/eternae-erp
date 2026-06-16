@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
 
 export default function OrcamentoModal({
   open,
@@ -12,10 +13,19 @@ export default function OrcamentoModal({
   const [status, setStatus] = useState('Pendente')
   const [observacoes, setObservacoes] = useState('')
   const [itens, setItens] = useState([])
+  const [kits, setKits] = useState([])
 
+  const [tipoItem, setTipoItem] = useState('produto')
   const [produtoId, setProdutoId] = useState('')
+  const [kitId, setKitId] = useState('')
   const [quantidade, setQuantidade] = useState(1)
   const [valorUnitario, setValorUnitario] = useState('')
+
+  useEffect(() => {
+    if (open) {
+      carregarKits()
+    }
+  }, [open])
 
   useEffect(() => {
     if (orcamento) {
@@ -30,12 +40,34 @@ export default function OrcamentoModal({
       setItens([])
     }
 
-    setProdutoId('')
-    setQuantidade(1)
-    setValorUnitario('')
+    limparSelecaoItem()
   }, [orcamento, open])
 
+  async function carregarKits() {
+    const { data, error } = await supabase
+      .from('kits')
+      .select('*')
+      .eq('ativo', true)
+      .gt('preco_final', 0)
+      .order('nome', { ascending: true })
+
+    if (error) {
+      console.log('Erro ao carregar kits:', error)
+      return
+    }
+
+    setKits(data || [])
+  }
+
   if (!open) return null
+
+  function limparSelecaoItem() {
+    setTipoItem('produto')
+    setProdutoId('')
+    setKitId('')
+    setQuantidade(1)
+    setValorUnitario('')
+  }
 
   function formatarMoeda(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
@@ -48,51 +80,97 @@ export default function OrcamentoModal({
     return produtos.find(produto => produto.id === produtoId)
   }
 
-  function selecionarProduto(id) {
-  setProdutoId(id)
-
-  const produto = produtos.find(item => item.id === id)
-
-  if (!produto) {
-    setValorUnitario('')
-    return
+  function kitSelecionado() {
+    return kits.find(kit => kit.id === kitId)
   }
 
-  const precoProduto =
-    produto.preco_final ||
-    produto.preco ||
-    0
+  function selecionarTipoItem(tipo) {
+    setTipoItem(tipo)
+    setProdutoId('')
+    setKitId('')
+    setValorUnitario('')
+  }
 
-  setValorUnitario(precoProduto)
-}
+  function selecionarProduto(id) {
+    setProdutoId(id)
 
-  function adicionarItem() {
-    if (!produtoId) {
-      alert('Selecione um produto.')
+    const produto = produtos.find(item => item.id === id)
+
+    if (!produto) {
+      setValorUnitario('')
       return
     }
 
-    const produto = produtoSelecionado()
+    setValorUnitario(produto.preco_final || produto.preco || 0)
+  }
+
+  function selecionarKit(id) {
+    setKitId(id)
+
+    const kit = kits.find(item => item.id === id)
+
+    if (!kit) {
+      setValorUnitario('')
+      return
+    }
+
+    setValorUnitario(kit.preco_final || 0)
+  }
+
+  function adicionarItem() {
     const quantidadeNumero = Number(quantidade || 1)
     const valorNumero = Number(valorUnitario || 0)
     const subtotal = quantidadeNumero * valorNumero
 
-    setItens([
-      ...itens,
-      {
-        produto_id: produtoId,
-        produtos: {
-          nome: produto?.nome || 'Produto'
-        },
-        quantidade: quantidadeNumero,
-        valor_unitario: valorNumero,
-        subtotal
+    if (tipoItem === 'produto') {
+      if (!produtoId) {
+        alert('Selecione um produto.')
+        return
       }
-    ])
 
-    setProdutoId('')
-    setQuantidade(1)
-    setValorUnitario('')
+      const produto = produtoSelecionado()
+
+      setItens([
+        ...itens,
+        {
+          tipo_item: 'produto',
+          produto_id: produtoId,
+          kit_id: null,
+          nome_item: produto?.nome || 'Produto',
+          produtos: {
+            nome: produto?.nome || 'Produto'
+          },
+          quantidade: quantidadeNumero,
+          valor_unitario: valorNumero,
+          subtotal
+        }
+      ])
+    }
+
+    if (tipoItem === 'kit') {
+      if (!kitId) {
+        alert('Selecione um kit.')
+        return
+      }
+
+      const kit = kitSelecionado()
+
+      setItens([
+        ...itens,
+        {
+          tipo_item: 'kit',
+          produto_id: null,
+          kit_id: kitId,
+          nome_item: kit?.nome || 'Kit',
+          produtos: null,
+          quantidade: quantidadeNumero,
+          valor_unitario: valorNumero,
+          subtotal
+        }
+      ])
+    }
+
+    limparSelecaoItem()
   }
 
   function removerItem(index) {
@@ -103,6 +181,10 @@ export default function OrcamentoModal({
     return itens.reduce((total, item) => {
       return total + Number(item.subtotal || 0)
     }, 0)
+  }
+
+  function nomeItem(item) {
+    return item.nome_item || item.produtos?.nome || 'Item'
   }
 
   function handleSubmit() {
@@ -147,10 +229,7 @@ export default function OrcamentoModal({
               <option value="">Selecione um cliente</option>
 
               {clientes.map(cliente => (
-                <option
-                  key={cliente.id}
-                  value={cliente.id}
-                >
+                <option key={cliente.id} value={cliente.id}>
                   {cliente.nome}
                 </option>
               ))}
@@ -181,24 +260,48 @@ export default function OrcamentoModal({
             Itens do orçamento
           </h3>
 
-          <div className="grid grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-5 gap-4 mb-4">
 
             <select
-              value={produtoId}
-              onChange={(e) => selecionarProduto(e.target.value)}
+              value={tipoItem}
+              onChange={(e) => selecionarTipoItem(e.target.value)}
               className="border rounded-xl px-4 py-3"
             >
-              <option value="">Selecione um produto</option>
-
-              {produtos.map(produto => (
-                <option
-                  key={produto.id}
-                  value={produto.id}
-                >
-                  {produto.nome}
-                </option>
-              ))}
+              <option value="produto">Produto</option>
+              <option value="kit">Kit</option>
             </select>
+
+            {tipoItem === 'produto' && (
+              <select
+                value={produtoId}
+                onChange={(e) => selecionarProduto(e.target.value)}
+                className="border rounded-xl px-4 py-3"
+              >
+                <option value="">Selecione um produto</option>
+
+                {produtos.map(produto => (
+                  <option key={produto.id} value={produto.id}>
+                    {produto.nome}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {tipoItem === 'kit' && (
+              <select
+                value={kitId}
+                onChange={(e) => selecionarKit(e.target.value)}
+                className="border rounded-xl px-4 py-3"
+              >
+                <option value="">Selecione um kit</option>
+
+                {kits.map(kit => (
+                  <option key={kit.id} value={kit.id}>
+                    {kit.nome}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <input
               type="number"
@@ -217,12 +320,6 @@ export default function OrcamentoModal({
               placeholder="Valor unitário"
             />
 
-{produtoSelecionado() && (
-  <p className="text-xs text-green-700 mt-1">
-    Preço precificado: {formatarMoeda(produtoSelecionado()?.preco_final || produtoSelecionado()?.preco)}
-  </p>
-)}
-
             <button
               onClick={adicionarItem}
               className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
@@ -231,6 +328,18 @@ export default function OrcamentoModal({
             </button>
 
           </div>
+
+          {tipoItem === 'produto' && produtoSelecionado() && (
+            <p className="text-xs text-green-700 mb-4">
+              Preço precificado: {formatarMoeda(produtoSelecionado()?.preco_final || produtoSelecionado()?.preco)}
+            </p>
+          )}
+
+          {tipoItem === 'kit' && kitSelecionado() && (
+            <p className="text-xs text-green-700 mb-4">
+              Preço do kit: {formatarMoeda(kitSelecionado()?.preco_final)}
+            </p>
+          )}
 
           {itens.length === 0 ? (
             <p className="text-gray-500 text-sm">
@@ -246,11 +355,11 @@ export default function OrcamentoModal({
                 >
                   <div>
                     <p className="font-semibold text-gray-800">
-                      {item.produtos?.nome || 'Produto'}
+                      {nomeItem(item)}
                     </p>
 
                     <p className="text-sm text-gray-500">
-                      {item.quantidade} x {formatarMoeda(item.valor_unitario)}
+                      {item.tipo_item === 'kit' ? '🎁 Kit' : '🛍️ Produto'} · {item.quantidade} x {formatarMoeda(item.valor_unitario)}
                     </p>
                   </div>
 
