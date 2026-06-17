@@ -12,9 +12,9 @@ export default function StatCard({
       </div>
 
       <div className="flex-1 flex items-center justify-center">
-        <h3 className="text-[2rem] font-bold text-gray-800 text-center leading-none">
-          {value}
-        </h3>
+        <h3 className="text-[2rem] font-bold text-gray-800 text-center leading-none whitespace-nowrap">
+  {value}
+</h3>
       </div>
 
     </div>

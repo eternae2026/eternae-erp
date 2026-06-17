@@ -108,6 +108,10 @@ export default function Home() {
         *,
         clientes (
           nome
+        ),
+        financeiro (
+          id,
+          status
         )
       `)
       .order('created_at', { ascending: false })
@@ -237,15 +241,42 @@ export default function Home() {
     return pedido.etapa_producao || 'Aguardando Pagamento'
   }
 
+  function financeiroCancelado(pedido) {
+    if (!pedido.financeiro) return false
+
+    if (Array.isArray(pedido.financeiro)) {
+      return pedido.financeiro.some(item => item.status === 'Cancelado')
+    }
+
+    return pedido.financeiro.status === 'Cancelado'
+  }
+
+  function pedidoCancelado(pedido) {
+    if (pedido.status === 'Cancelado') return true
+    if (pedido.etapa_producao === 'Cancelado') return true
+    if (financeiroCancelado(pedido)) return true
+
+    return false
+  }
+
   function pedidosEmAndamento() {
     return pedidos.filter(pedido => {
       const etapa = etapaPedido(pedido)
-      return etapa !== 'Entregue'
+
+      return (
+        etapa !== 'Entregue' &&
+        !pedidoCancelado(pedido)
+      )
     }).length
   }
 
   function pedidosPorEtapa(etapa) {
-    return pedidos.filter(pedido => etapaPedido(pedido) === etapa).length
+    return pedidos.filter(pedido => {
+      return (
+        etapaPedido(pedido) === etapa &&
+        !pedidoCancelado(pedido)
+      )
+    }).length
   }
 
   function quantidadeLivre(item) {
@@ -308,7 +339,7 @@ export default function Home() {
           />
 
           <StatCard
-            title="Pedidos em andamento"
+            title="Pedidos ativos"
             value={pedidosEmAndamento()}
           />
 

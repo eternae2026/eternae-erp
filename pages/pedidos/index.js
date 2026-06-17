@@ -14,7 +14,8 @@ export default function Pedidos() {
     'Aguardando Aprovação',
     'Produção',
     'Pronto',
-    'Entregue'
+    'Entregue',
+    'Cancelado'
   ]
 
   const orcamentoItensSelect = `
@@ -310,6 +311,58 @@ export default function Pedidos() {
     )
   }
 
+  async function cancelarPedido(pedido) {
+    const etapaAtual = etapaPedido(pedido)
+
+    if (etapaAtual === 'Cancelado') return
+
+    if (statusPagamento(pedido) === 'Recebido') {
+      const confirmarPago = confirm(
+        'Este pedido já possui pagamento recebido. Deseja cancelar mesmo assim? Verifique se será necessário reembolso.'
+      )
+
+      if (!confirmarPago) return
+    }
+
+    const confirmar = confirm(
+      'Deseja cancelar este pedido? Ele continuará no histórico, mas sairá do fluxo ativo.'
+    )
+
+    if (!confirmar) return
+
+    const { error: erroPedido } = await supabase
+      .from('pedidos')
+      .update({
+        etapa_producao: 'Cancelado',
+        status: 'Cancelado'
+      })
+      .eq('id', pedido.id)
+
+    if (erroPedido) {
+      console.log('Erro ao cancelar pedido:', erroPedido)
+      alert('Erro ao cancelar pedido.')
+      return
+    }
+
+    const { error: erroFinanceiro } = await supabase
+      .from('financeiro')
+      .update({
+        status: 'Cancelado'
+      })
+      .eq('pedido_id', pedido.id)
+      .eq('status', 'Pendente')
+
+    if (erroFinanceiro) {
+      console.log('Erro ao cancelar financeiro:', erroFinanceiro)
+      alert('Pedido cancelado, mas houve erro ao cancelar cobrança pendente.')
+      await carregarPedidos()
+      return
+    }
+
+    alert('Pedido cancelado com sucesso!')
+    await carregarPedidos()
+  }
+
   async function gerarCobranca(pedido) {
     const confirmar = confirm('Deseja gerar cobrança para este pedido?')
 
@@ -359,11 +412,16 @@ export default function Pedidos() {
 
   function avancarPedido(pedido) {
     const etapaAtual = etapaPedido(pedido)
+
+    if (etapaAtual === 'Cancelado') return
+
     const indiceAtual = indiceEtapa(etapaAtual)
 
     if (indiceAtual === etapasProducao.length - 1) return
 
     const proximaEtapa = etapasProducao[indiceAtual + 1]
+
+    if (proximaEtapa === 'Cancelado') return
 
     if (proximaEtapa === 'Arte' && statusPagamento(pedido) !== 'Recebido') {
       alert('Só é possível avançar para Arte após o pagamento ser recebido.')
@@ -375,6 +433,9 @@ export default function Pedidos() {
 
   function voltarPedido(pedido) {
     const etapaAtual = etapaPedido(pedido)
+
+    if (etapaAtual === 'Cancelado') return
+
     const indiceAtual = indiceEtapa(etapaAtual)
 
     if (indiceAtual === 0) return
@@ -391,8 +452,39 @@ export default function Pedidos() {
     if (etapa === 'Produção') return 'bg-purple-50'
     if (etapa === 'Pronto') return 'bg-green-50'
     if (etapa === 'Entregue') return 'bg-gray-50'
+    if (etapa === 'Cancelado') return 'bg-red-50'
 
     return 'bg-white'
+  }
+
+  function statusVisual(pedido) {
+    const etapa = etapaPedido(pedido)
+
+    if (etapa === 'Cancelado') {
+      return {
+        texto: 'Cancelado',
+        classe: 'bg-red-100 text-red-700'
+      }
+    }
+
+    if (statusPagamento(pedido) === 'Recebido') {
+      return {
+        texto: 'Pago',
+        classe: 'bg-green-100 text-green-700'
+      }
+    }
+
+    if (statusPagamento(pedido) === 'Cancelado') {
+      return {
+        texto: 'Cancelado',
+        classe: 'bg-red-100 text-red-700'
+      }
+    }
+
+    return {
+      texto: 'Pendente',
+      classe: 'bg-yellow-100 text-yellow-700'
+    }
   }
 
   return (
@@ -408,7 +500,7 @@ export default function Pedidos() {
             </h1>
 
             <p className="text-gray-500">
-              Acompanhe pagamento, arte, aprovação, produção e entrega dos pedidos.
+              Acompanhe pagamento, arte, aprovação, produção, entrega e cancelamentos dos pedidos.
             </p>
           </div>
         </div>
@@ -443,7 +535,9 @@ export default function Pedidos() {
                       <div className="space-y-3">
                         {lista.map(pedido => {
                           const indiceAtual = indiceEtapa(etapaPedido(pedido))
-                          const pagamentoRecebido = statusPagamento(pedido) === 'Recebido'
+                          const etapaAtual = etapaPedido(pedido)
+                          const visual = statusVisual(pedido)
+                          const bloqueado = etapaAtual === 'Cancelado'
 
                           return (
                             <div
@@ -461,12 +555,8 @@ export default function Pedidos() {
                                   </p>
                                 </div>
 
-                                <span className={`px-2 py-1 rounded-full text-[11px] font-semibold ${
-                                  pagamentoRecebido
-                                    ? 'bg-green-100 text-green-700'
-                                    : 'bg-yellow-100 text-yellow-700'
-                                }`}>
-                                  {pagamentoRecebido ? 'Pago' : 'Pendente'}
+                                <span className={`${visual.classe} px-2 py-1 rounded-full text-[11px] font-semibold`}>
+                                  {visual.texto}
                                 </span>
                               </div>
 
@@ -482,7 +572,7 @@ export default function Pedidos() {
                                   Ver
                                 </button>
 
-                                {!jaTemCobranca(pedido) ? (
+                                {!bloqueado && !jaTemCobranca(pedido) ? (
                                   <button
                                     onClick={() => gerarCobranca(pedido)}
                                     className="bg-green-600 text-white px-3 py-2 rounded-lg text-xs hover:bg-green-700"
@@ -490,18 +580,31 @@ export default function Pedidos() {
                                     Cobrar
                                   </button>
                                 ) : (
-                                  <div className="bg-green-50 text-green-700 px-3 py-2 rounded-lg text-xs font-semibold text-center">
-                                    Cobrança OK
+                                  <div className={`px-3 py-2 rounded-lg text-xs font-semibold text-center ${
+                                    bloqueado
+                                      ? 'bg-red-50 text-red-700'
+                                      : 'bg-green-50 text-green-700'
+                                  }`}>
+                                    {bloqueado ? 'Cancelado' : 'Cobrança OK'}
                                   </div>
                                 )}
                               </div>
 
+                              {!bloqueado && etapaAtual !== 'Entregue' && (
+                                <button
+                                  onClick={() => cancelarPedido(pedido)}
+                                  className="w-full bg-red-50 text-red-700 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-red-100 mt-3"
+                                >
+                                  Cancelar Pedido
+                                </button>
+                              )}
+
                               <div className="flex justify-between gap-2 mt-3">
                                 <button
                                   onClick={() => voltarPedido(pedido)}
-                                  disabled={indiceAtual === 0}
+                                  disabled={indiceAtual === 0 || bloqueado}
                                   className={`flex-1 px-3 py-2 rounded-lg text-xs ${
-                                    indiceAtual === 0
+                                    indiceAtual === 0 || bloqueado
                                       ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                       : 'bg-gray-800 text-white hover:bg-gray-900'
                                   }`}
@@ -511,8 +614,14 @@ export default function Pedidos() {
 
                                 <button
                                   onClick={() => avancarPedido(pedido)}
-                                  disabled={indiceAtual === etapasProducao.length - 1}
+                                  disabled={
+                                    bloqueado ||
+                                    etapaAtual === 'Entregue' ||
+                                    indiceAtual === etapasProducao.length - 1
+                                  }
                                   className={`flex-1 px-3 py-2 rounded-lg text-xs ${
+                                    bloqueado ||
+                                    etapaAtual === 'Entregue' ||
                                     indiceAtual === etapasProducao.length - 1
                                       ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                       : 'bg-gray-800 text-white hover:bg-gray-900'

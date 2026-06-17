@@ -379,94 +379,158 @@ export default function Orcamentos() {
   }
 
   function gerarPDF(orcamento) {
-    const doc = new jsPDF()
-    const clienteNome = orcamento.clientes?.nome || 'Cliente não informado'
-    const itens = orcamento.orcamento_itens || []
-    const nomeEmpresa = configuracoes?.nome_empresa || 'Eternaê'
+  const doc = new jsPDF()
+  const clienteNome = orcamento.clientes?.nome || 'Cliente não informado'
+  const itens = orcamento.orcamento_itens || []
 
-    doc.setFontSize(22)
-    doc.text(nomeEmpresa, 105, 20, { align: 'center' })
+  const nomeEmpresa = configuracoes?.nome_empresa || 'Eternaê'
+  const whatsapp = configuracoes?.whatsapp || ''
+  const instagram = configuracoes?.instagram || ''
+  const email = configuracoes?.email || ''
+  const site = configuracoes?.site || ''
+  const pix = configuracoes?.pix || ''
+  const prazo = configuracoes?.prazo_padrao || ''
+  const mensagem = configuracoes?.mensagem_orcamento || 'Aguardamos sua aprovação.'
 
-    doc.setFontSize(16)
-    doc.text('ORÇAMENTO', 105, 32, { align: 'center' })
+  const numeroOrcamento = orcamento.id?.slice(0, 8).toUpperCase() || '00000000'
 
-    doc.setFontSize(9)
+  // Cabeçalho
+  doc.setFillColor(31, 41, 55)
+  doc.rect(0, 0, 210, 34, 'F')
 
-    const contatos = []
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(22)
+  doc.setFont(undefined, 'bold')
+  doc.text(nomeEmpresa, 14, 16)
 
-    if (configuracoes?.whatsapp) {
-      contatos.push(`WhatsApp: ${configuracoes.whatsapp}`)
-    }
+  doc.setFontSize(11)
+  doc.setFont(undefined, 'normal')
+  doc.text('Proposta comercial personalizada', 14, 24)
 
-    if (configuracoes?.instagram) {
-      contatos.push(`Instagram: ${configuracoes.instagram}`)
-    }
+  doc.setFontSize(16)
+  doc.setFont(undefined, 'bold')
+  doc.text('ORÇAMENTO', 196, 16, { align: 'right' })
 
-    if (configuracoes?.email) {
-      contatos.push(`E-mail: ${configuracoes.email}`)
-    }
+  doc.setFontSize(9)
+  doc.setFont(undefined, 'normal')
+  doc.text(`Nº ${numeroOrcamento}`, 196, 24, { align: 'right' })
 
-    if (contatos.length > 0) {
-      doc.text(contatos.join('  |  '), 105, 40, { align: 'center' })
-    }
+  // Contatos
+  doc.setTextColor(60, 60, 60)
+  doc.setFontSize(9)
 
-    doc.setFontSize(10)
-    doc.text(`Cliente: ${clienteNome}`, 14, 55)
-    doc.text(`Data: ${formatarData(orcamento.created_at)}`, 14, 62)
-    doc.text(`Status: ${orcamento.status}`, 14, 69)
+  const contatos = []
+  if (whatsapp) contatos.push(`WhatsApp: ${whatsapp}`)
+  if (instagram) contatos.push(`Instagram: ${instagram}`)
+  if (email) contatos.push(`E-mail: ${email}`)
+  if (site) contatos.push(`Site: ${site}`)
 
-    autoTable(doc, {
-      startY: 80,
-      head: [['Item', 'Qtd', 'Valor Unitário', 'Subtotal']],
-      body: itens.map(item => [
-        nomeItem(item),
-        item.quantidade,
-        formatarMoeda(item.valor_unitario),
-        formatarMoeda(item.subtotal)
-      ]),
-      styles: {
-        fontSize: 10
-      },
-      headStyles: {
-        fillColor: [31, 41, 55]
-      }
-    })
-
-    const finalY = doc.lastAutoTable.finalY || 90
-
-    doc.setFontSize(14)
-    doc.text(
-      `TOTAL: ${formatarMoeda(orcamento.valor)}`,
-      14,
-      finalY + 15
-    )
-
-    let textoFinalY = finalY + 30
-
-    if (configuracoes?.prazo_padrao) {
-      doc.setFontSize(10)
-      doc.text(`Prazo padrão: ${configuracoes.prazo_padrao}`, 14, textoFinalY)
-      textoFinalY += 8
-    }
-
-    doc.setFontSize(10)
-    doc.text(
-      configuracoes?.mensagem_orcamento || 'Aguardamos sua aprovação.',
-      14,
-      textoFinalY
-    )
-
-    textoFinalY += 8
-
-    if (configuracoes?.pix) {
-      doc.text(`PIX: ${configuracoes.pix}`, 14, textoFinalY)
-      textoFinalY += 8
-    }
-
-    doc.text(nomeEmpresa, 14, textoFinalY + 2)
-
-    doc.save(`orcamento-${clienteNome}.pdf`)
+  if (contatos.length > 0) {
+    doc.text(contatos.join('  |  '), 14, 43)
   }
+
+  // Dados do cliente
+  doc.setDrawColor(230, 230, 230)
+  doc.setFillColor(248, 250, 252)
+  doc.roundedRect(14, 52, 182, 30, 3, 3, 'FD')
+
+  doc.setTextColor(31, 41, 55)
+  doc.setFontSize(11)
+  doc.setFont(undefined, 'bold')
+  doc.text('Dados do cliente', 20, 62)
+
+  doc.setFont(undefined, 'normal')
+  doc.setFontSize(10)
+  doc.text(`Cliente: ${clienteNome}`, 20, 70)
+  doc.text(`Data: ${formatarData(orcamento.created_at)}`, 20, 77)
+  doc.text(`Status: ${orcamento.status || 'Pendente'}`, 115, 77)
+
+  // Tabela
+  autoTable(doc, {
+    startY: 92,
+    head: [['Item', 'Qtd', 'Valor Unitário', 'Subtotal']],
+    body: itens.map(item => [
+      nomeItem(item),
+      item.quantidade,
+      formatarMoeda(item.valor_unitario),
+      formatarMoeda(item.subtotal)
+    ]),
+    styles: {
+      fontSize: 10,
+      cellPadding: 4
+    },
+    headStyles: {
+      fillColor: [31, 41, 55],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold'
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    columnStyles: {
+      1: { halign: 'center' },
+      2: { halign: 'right' },
+      3: { halign: 'right' }
+    }
+  })
+
+  const finalY = doc.lastAutoTable.finalY || 110
+
+  // Total
+  doc.setFillColor(248, 250, 252)
+  doc.roundedRect(116, finalY + 10, 80, 24, 3, 3, 'F')
+
+  doc.setTextColor(31, 41, 55)
+  doc.setFontSize(11)
+  doc.setFont(undefined, 'normal')
+  doc.text('Total do orçamento', 122, finalY + 20)
+
+  doc.setFontSize(16)
+  doc.setFont(undefined, 'bold')
+  doc.text(formatarMoeda(orcamento.valor), 190, finalY + 20, { align: 'right' })
+
+  let y = finalY + 48
+
+  // Condições
+  doc.setFontSize(12)
+  doc.setFont(undefined, 'bold')
+  doc.text('Condições comerciais', 14, y)
+
+  y += 8
+
+  doc.setFontSize(10)
+  doc.setFont(undefined, 'normal')
+
+  if (prazo) {
+    doc.text(`Prazo de produção: ${prazo}`, 14, y)
+    y += 7
+  }
+
+  doc.text(mensagem, 14, y, { maxWidth: 180 })
+  y += 14
+
+  if (pix) {
+    doc.setFont(undefined, 'bold')
+    doc.text('Pagamento via PIX', 14, y)
+    y += 7
+
+    doc.setFont(undefined, 'normal')
+    doc.text(`Chave PIX: ${pix}`, 14, y)
+    y += 10
+  }
+
+  // Rodapé
+  doc.setDrawColor(230, 230, 230)
+  doc.line(14, 280, 196, 280)
+
+  doc.setFontSize(9)
+  doc.setTextColor(100, 100, 100)
+  doc.text(`${nomeEmpresa} • Criando memórias afetivas em cada detalhe.`, 105, 287, {
+    align: 'center'
+  })
+
+  doc.save(`orcamento-${clienteNome}.pdf`)
+}
 
   return (
     <div className="flex min-h-screen bg-gray-100">

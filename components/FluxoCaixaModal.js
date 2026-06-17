@@ -17,11 +17,15 @@ export default function FluxoCaixaModal({
     return new Date(data).toLocaleDateString('pt-BR')
   }
 
-  const entradas = movimentos
+  const movimentosValidos = movimentos.filter(item => {
+    return item.status !== 'Cancelado'
+  })
+
+  const entradas = movimentosValidos
     .filter(item => item.tipo === 'Entrada' && item.status === 'Recebido')
     .reduce((total, item) => total + Number(item.valor || 0), 0)
 
-  const saidas = movimentos
+  const saidas = movimentosValidos
     .filter(item => item.tipo === 'Saída')
     .reduce((total, item) => total + Number(item.valor || 0), 0)
 
@@ -89,7 +93,7 @@ export default function FluxoCaixaModal({
             </thead>
 
             <tbody>
-              {movimentos.map(item => (
+              {movimentosValidos.map(item => (
                 <tr key={item.id} className="border-t">
                   <td className="p-4">
                     {formatarData(item.data)}
@@ -127,7 +131,7 @@ export default function FluxoCaixaModal({
                 </tr>
               ))}
 
-              {movimentos.length === 0 && (
+              {movimentosValidos.length === 0 && (
                 <tr>
                   <td
                     colSpan="6"
