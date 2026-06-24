@@ -7,6 +7,8 @@ export default function Relatorios() {
   const [financeiro, setFinanceiro] = useState([])
   const [saidas, setSaidas] = useState([])
   const [pedidos, setPedidos] = useState([])
+  const [composicoes, setComposicoes] = useState([])
+  const [estoque, setEstoque] = useState([])
 
   const [tipoConsulta, setTipoConsulta] = useState('MesEspecifico')
   const [mesSelecionado, setMesSelecionado] = useState(String(new Date().getMonth() + 1))
@@ -24,6 +26,8 @@ export default function Relatorios() {
     await carregarFinanceiro()
     await carregarSaidas()
     await carregarPedidos()
+    await carregarComposicoes()
+    await carregarEstoque()
   }
 
   async function carregarFinanceiro() {
@@ -68,12 +72,14 @@ export default function Relatorios() {
         orcamentos (
           orcamento_itens (
             id,
+            produto_id,
             nome_item,
             tipo_item,
             quantidade,
+            valor_unitario,
             subtotal,
             produtos (
-              nome
+              *
             )
           )
         )
@@ -87,6 +93,32 @@ export default function Relatorios() {
     setPedidos(data || [])
   }
 
+  async function carregarComposicoes() {
+    const { data, error } = await supabase
+      .from('produto_composicao')
+      .select('*')
+
+    if (error) {
+      console.log('Erro ao carregar composição dos produtos:', error)
+      return
+    }
+
+    setComposicoes(data || [])
+  }
+
+  async function carregarEstoque() {
+    const { data, error } = await supabase
+      .from('estoque')
+      .select('*')
+
+    if (error) {
+      console.log('Erro ao carregar estoque:', error)
+      return
+    }
+
+    setEstoque(data || [])
+  }
+
   function formatarMoeda(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
       style: 'currency',
@@ -98,6 +130,10 @@ export default function Relatorios() {
     return Number(valor || 0).toLocaleString('pt-BR', {
       maximumFractionDigits: 2
     })
+  }
+
+  function formatarPercentual(valor) {
+    return `${formatarNumero(valor)}%`
   }
 
   function dataDentroDoPeriodo(data) {
@@ -135,7 +171,9 @@ export default function Relatorios() {
   )
 
   const pedidosFiltrados = pedidos.filter(item =>
-    dataDentroDoPeriodo(item.created_at)
+    dataDentroDoPeriodo(item.created_at) &&
+    item.status !== 'Cancelado' &&
+    item.etapa_producao !== 'Cancelado'
   )
 
   function faturamentoRecebido() {
@@ -199,6 +237,71 @@ export default function Relatorios() {
       .sort((a, b) => b.quantidade - a.quantidade)
   }
 
+  function custoUnitarioProduto(produtoId) {
+    if (!produtoId) return 0
+
+    const composicaoProduto = composicoes.filter(
+      item => item.produto_id === produtoId
+    )
+
+    if (composicaoProduto.length === 0) return 0
+
+    return composicaoProduto.reduce((total, composicao) => {
+      const insumo = estoque.find(item => item.id === composicao.insumo_id)
+
+      const custoInsumo = Number(insumo?.custo_unitario || 0)
+      const quantidadeInsumo = Number(composicao.quantidade || 0)
+
+      return total + (custoInsumo * quantidadeInsumo)
+    }, 0)
+  }
+
+  function lucroPorProduto() {
+    const produtos = {}
+
+    pedidosFiltrados.forEach(pedido => {
+      const itens = pedido.orcamentos?.orcamento_itens || []
+
+      itens.forEach(item => {
+        const nome =
+          item.nome_item ||
+          item.produtos?.nome ||
+          'Item'
+
+        const quantidade = Number(item.quantidade || 1)
+        const faturamento = Number(item.subtotal || 0)
+        const custoUnitario = custoUnitarioProduto(item.produto_id)
+        const custoTotal = custoUnitario * quantidade
+        const lucro = faturamento - custoTotal
+
+        if (!produtos[nome]) {
+          produtos[nome] = {
+            nome,
+            quantidade: 0,
+            faturamento: 0,
+            custo: 0,
+            lucro: 0,
+            margem: 0
+          }
+        }
+
+        produtos[nome].quantidade += quantidade
+        produtos[nome].faturamento += faturamento
+        produtos[nome].custo += custoTotal
+        produtos[nome].lucro += lucro
+      })
+    })
+
+    return Object.values(produtos)
+      .map(produto => ({
+        ...produto,
+        margem: produto.faturamento > 0
+          ? (produto.lucro / produto.faturamento) * 100
+          : 0
+      }))
+      .sort((a, b) => b.lucro - a.lucro)
+  }
+
   function nomeMes(mes) {
     const nomes = [
       'Janeiro',
@@ -240,6 +343,78 @@ export default function Relatorios() {
     return Object.entries(meses)
       .map(([mes, valor]) => ({ mes, valor }))
       .sort((a, b) => a.mes.localeCompare(b.mes))
+  }
+
+  function baixarCSV(nomeArquivo, linhas) {
+    if (!linhas || linhas.length === 0) {
+      alert('Não há dados para exportar.')
+      return
+    }
+
+    const cabecalhos = Object.keys(linhas[0])
+
+    const conteudo = [
+      cabecalhos.join(';'),
+      ...linhas.map(linha =>
+        cabecalhos.map(campo => {
+          const valor = linha[campo] ?? ''
+          return `"${String(valor).replace(/"/g, '""')}"`
+        }).join(';')
+      )
+    ].join('\n')
+
+    const blob = new Blob([`\uFEFF${conteudo}`], {
+      type: 'text/csv;charset=utf-8;'
+    })
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+
+    link.href = url
+    link.download = nomeArquivo
+    link.click()
+
+    URL.revokeObjectURL(url)
+  }
+
+  function exportarProdutosMaisVendidos() {
+    const dados = produtosMaisVendidos().map(item => ({
+      Produto: item.nome,
+      Quantidade: formatarNumero(item.quantidade)
+    }))
+
+    baixarCSV('produtos-mais-vendidos.csv', dados)
+  }
+
+  function exportarClientesMaisCompraram() {
+    const dados = clientesMaisCompraram().map(item => ({
+      Cliente: item.nome,
+      Valor: formatarMoeda(item.valor)
+    }))
+
+    baixarCSV('clientes-que-mais-compraram.csv', dados)
+  }
+
+  function exportarFaturamentoPorMes() {
+    const dados = mesesRelatorio().map(item => ({
+      Mes: formatarMesAno(item.mes),
+      Faturamento: formatarMoeda(item.valor)
+    }))
+
+    baixarCSV('faturamento-por-mes.csv', dados)
+  }
+
+  function exportarLucroPorProduto() {
+    const dados = lucroPorProduto().map(item => ({
+      Produto: item.nome,
+      Quantidade: formatarNumero(item.quantidade),
+      Faturamento: formatarMoeda(item.faturamento),
+      Custo: formatarMoeda(item.custo),
+      Lucro: formatarMoeda(item.lucro),
+      Margem: formatarPercentual(item.margem)
+    }))
+
+    baixarCSV('lucro-por-produto.csv', dados)
   }
 
   return (
@@ -370,7 +545,7 @@ export default function Relatorios() {
 
         </div>
 
-        <div className="grid grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-4 gap-6 mb-8">
 
           <button
             onClick={() => setModalAberto('produtos')}
@@ -411,6 +586,19 @@ export default function Relatorios() {
             </p>
           </button>
 
+          <button
+            onClick={() => setModalAberto('lucro')}
+            className="bg-white rounded-2xl p-6 shadow-sm text-left hover:bg-gray-50 transition"
+          >
+            <p className="text-gray-500">Relatório</p>
+            <h2 className="text-xl font-bold text-gray-800 mt-2">
+              Lucro por produto
+            </h2>
+            <p className="text-sm text-gray-500 mt-2">
+              Veja faturamento, custo, lucro e margem por produto.
+            </p>
+          </button>
+
         </div>
 
         <RelatorioDetalheModal
@@ -419,6 +607,15 @@ export default function Relatorios() {
           titulo="Produtos mais vendidos"
           descricao="Itens com maior quantidade vendida no período selecionado."
         >
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={exportarProdutosMaisVendidos}
+              className="bg-gray-900 text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition"
+            >
+              Exportar CSV
+            </button>
+          </div>
+
           {produtosMaisVendidos().length === 0 ? (
             <p className="text-gray-500">
               Nenhum produto vendido neste período.
@@ -449,6 +646,15 @@ export default function Relatorios() {
           titulo="Clientes que mais compraram"
           descricao="Clientes com maior valor recebido no período selecionado."
         >
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={exportarClientesMaisCompraram}
+              className="bg-gray-900 text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition"
+            >
+              Exportar CSV
+            </button>
+          </div>
+
           {clientesMaisCompraram().length === 0 ? (
             <p className="text-gray-500">
               Nenhum cliente com compra recebida neste período.
@@ -479,6 +685,15 @@ export default function Relatorios() {
           titulo="Faturamento por mês"
           descricao="Evolução mensal do faturamento recebido."
         >
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={exportarFaturamentoPorMes}
+              className="bg-gray-900 text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition"
+            >
+              Exportar CSV
+            </button>
+          </div>
+
           {mesesRelatorio().length === 0 ? (
             <p className="text-gray-500">
               Nenhum faturamento recebido neste período.
@@ -499,6 +714,75 @@ export default function Relatorios() {
                   </strong>
                 </div>
               ))}
+            </div>
+          )}
+        </RelatorioDetalheModal>
+
+        <RelatorioDetalheModal
+          open={modalAberto === 'lucro'}
+          onClose={() => setModalAberto(null)}
+          titulo="Lucro por produto"
+          descricao="Faturamento, custo real dos insumos, lucro e margem por produto no período selecionado."
+        >
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={exportarLucroPorProduto}
+              className="bg-gray-900 text-white px-4 py-2 rounded-xl hover:bg-gray-800 transition"
+            >
+              Exportar CSV
+            </button>
+          </div>
+
+          {lucroPorProduto().length === 0 ? (
+            <p className="text-gray-500">
+              Nenhum produto vendido neste período.
+            </p>
+          ) : (
+            <div className="overflow-x-auto border rounded-2xl">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left p-4 text-gray-600">Produto</th>
+                    <th className="text-left p-4 text-gray-600">Qtd</th>
+                    <th className="text-left p-4 text-gray-600">Faturamento</th>
+                    <th className="text-left p-4 text-gray-600">Custo</th>
+                    <th className="text-left p-4 text-gray-600">Lucro</th>
+                    <th className="text-left p-4 text-gray-600">Margem</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {lucroPorProduto().map(item => (
+                    <tr key={item.nome} className="border-t">
+                      <td className="p-4">
+                        {item.nome}
+                      </td>
+
+                      <td className="p-4">
+                        {formatarNumero(item.quantidade)}
+                      </td>
+
+                      <td className="p-4">
+                        {formatarMoeda(item.faturamento)}
+                      </td>
+
+                      <td className="p-4">
+                        {formatarMoeda(item.custo)}
+                      </td>
+
+                      <td className={`p-4 font-semibold ${
+                        item.lucro >= 0 ? 'text-green-700' : 'text-red-600'
+                      }`}>
+                        {formatarMoeda(item.lucro)}
+                      </td>
+
+                      <td className="p-4">
+                        {formatarPercentual(item.margem)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </RelatorioDetalheModal>

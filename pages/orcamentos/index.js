@@ -442,8 +442,7 @@ export default function Orcamentos() {
   doc.setFont(undefined, 'normal')
   doc.setFontSize(10)
   doc.text(`Cliente: ${clienteNome}`, 20, 70)
-  doc.text(`Data: ${formatarData(orcamento.created_at)}`, 20, 77)
-  doc.text(`Status: ${orcamento.status || 'Pendente'}`, 115, 77)
+doc.text(`Data: ${formatarData(orcamento.created_at)}`, 20, 77)
 
   // Tabela
   autoTable(doc, {
