@@ -1,3 +1,4 @@
+import ListaPedidosModal from '../../components/ListaPedidosModal'
 import { useEffect, useState } from 'react'
 import PedidoDetalhesModal from '../../components/PedidoDetalhesModal'
 import Sidebar from '../../components/Sidebar'
@@ -5,7 +6,22 @@ import { supabase } from '../../lib/supabase'
 
 export default function Pedidos() {
   const [pedidos, setPedidos] = useState([])
+  const [buscaCliente, setBuscaCliente] = useState('')
+
+const [tipoConsulta, setTipoConsulta] = useState('MesAtual')
+
+const [mesSelecionado, setMesSelecionado] = useState(
+  String(new Date().getMonth() + 1)
+)
+
+const [anoSelecionado, setAnoSelecionado] = useState(
+  String(new Date().getFullYear())
+)
+
+const [dataInicial, setDataInicial] = useState('')
+const [dataFinal, setDataFinal] = useState('')
   const [openDetalhes, setOpenDetalhes] = useState(false)
+  const [openListaPedidos, setOpenListaPedidos] = useState(false)
   const [pedidoSelecionado, setPedidoSelecionado] = useState(null)
 
   const etapasProducao = [
@@ -93,13 +109,68 @@ export default function Pedidos() {
     return pedido.etapa_producao || 'Aguardando Pagamento'
   }
 
+  const pedidosFiltrados = pedidos.filter(pedido => {
+  const cliente = pedido.clientes?.nome || ''
+
+  const filtroCliente =
+    buscaCliente.trim() === '' ||
+    cliente.toLowerCase().includes(
+      buscaCliente.toLowerCase()
+    )
+
+  const filtroPeriodo = dataDentroDoPeriodo(
+    pedido.created_at
+  )
+
+  return filtroCliente && filtroPeriodo
+})
+
   function pedidosPorEtapa(etapa) {
-    return pedidos.filter(pedido => etapaPedido(pedido) === etapa)
-  }
+  return pedidosFiltrados.filter(
+    pedido => etapaPedido(pedido) === etapa
+  )
+}
 
   function indiceEtapa(etapa) {
     return etapasProducao.indexOf(etapa)
   }
+
+  function dataDentroDoPeriodo(data) {
+  if (!data) return false
+
+  const dataBase = new Date(data)
+
+  if (tipoConsulta === 'Todos') {
+    return true
+  }
+
+  if (tipoConsulta === 'MesAtual') {
+    const hoje = new Date()
+
+    return (
+      dataBase.getMonth() === hoje.getMonth() &&
+      dataBase.getFullYear() === hoje.getFullYear()
+    )
+  }
+
+  if (tipoConsulta === 'MesEspecifico') {
+    return (
+      dataBase.getMonth() + 1 === Number(mesSelecionado) &&
+      dataBase.getFullYear() === Number(anoSelecionado)
+    )
+  }
+
+  if (tipoConsulta === 'PeriodoPersonalizado') {
+    if (!dataInicial || !dataFinal) return true
+
+    const inicio = new Date(dataInicial)
+    const fim = new Date(dataFinal)
+
+    return dataBase >= inicio && dataBase <= fim
+  }
+
+  return true
+}
 
   function jaTemCobranca(pedido) {
     if (!pedido.financeiro) return false
@@ -505,6 +576,98 @@ export default function Pedidos() {
           </div>
         </div>
 
+        <div className="bg-white rounded-2xl p-4 shadow-sm mb-6">
+  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+
+    <input
+      type="text"
+      placeholder="Buscar cliente..."
+      value={buscaCliente}
+      onChange={(e) => setBuscaCliente(e.target.value)}
+      className="border rounded-xl px-4 py-3 md:col-span-2"
+    />
+
+   <select
+  value={tipoConsulta}
+  onChange={(e) => setTipoConsulta(e.target.value)}
+  className="border rounded-xl px-4 py-3"
+>
+  <option value="MesAtual">
+    Mês atual
+  </option>
+
+  <option value="MesEspecifico">
+    Mês específico
+  </option>
+
+  <option value="PeriodoPersonalizado">
+    Período personalizado
+  </option>
+
+  <option value="Todos">
+    Todos
+  </option>
+</select>
+
+<button
+  type="button"
+  onClick={() => setOpenListaPedidos(true)}
+  className="bg-gray-900 text-white px-4 py-3 rounded-xl hover:bg-gray-800 transition"
+>
+  📋 Consultar Pedidos
+</button>
+
+    {tipoConsulta === 'MesEspecifico' && (
+      <>
+        <select
+          value={mesSelecionado}
+          onChange={(e) => setMesSelecionado(e.target.value)}
+          className="border rounded-xl px-4 py-3"
+        >
+          <option value="1">Janeiro</option>
+          <option value="2">Fevereiro</option>
+          <option value="3">Março</option>
+          <option value="4">Abril</option>
+          <option value="5">Maio</option>
+          <option value="6">Junho</option>
+          <option value="7">Julho</option>
+          <option value="8">Agosto</option>
+          <option value="9">Setembro</option>
+          <option value="10">Outubro</option>
+          <option value="11">Novembro</option>
+          <option value="12">Dezembro</option>
+        </select>
+
+        <input
+          type="number"
+          value={anoSelecionado}
+          onChange={(e) => setAnoSelecionado(e.target.value)}
+          className="border rounded-xl px-4 py-3"
+        />
+      </>
+    )}
+
+    {tipoConsulta === 'PeriodoPersonalizado' && (
+      <>
+        <input
+          type="date"
+          value={dataInicial}
+          onChange={(e) => setDataInicial(e.target.value)}
+          className="border rounded-xl px-4 py-3"
+        />
+
+        <input
+          type="date"
+          value={dataFinal}
+          onChange={(e) => setDataFinal(e.target.value)}
+          className="border rounded-xl px-4 py-3"
+        />
+      </>
+    )}
+
+  </div>
+</div>
+
         <div className="overflow-x-auto pb-4">
           <div className="flex gap-5 min-w-max">
 
@@ -643,6 +806,16 @@ export default function Pedidos() {
 
           </div>
         </div>
+
+<ListaPedidosModal
+  open={openListaPedidos}
+  onClose={() => setOpenListaPedidos(false)}
+  pedidos={pedidosFiltrados}
+  formatarMoeda={formatarMoeda}
+  calcularTotalPedido={calcularTotalPedido}
+  etapaPedido={etapaPedido}
+  statusPagamento={statusPagamento}
+/>
 
         <PedidoDetalhesModal
           open={openDetalhes}

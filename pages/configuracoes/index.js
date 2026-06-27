@@ -27,6 +27,12 @@ export default function Configuracoes() {
   const [proLabore, setProLabore] = useState('')
   const [percentualCrescimento, setPercentualCrescimento] = useState('')
   const [margemPadrao, setMargemPadrao] = useState('60')
+  
+  const [taxaCartao, setTaxaCartao] = useState('5.04')
+
+const [descontoPixAutomatico, setDescontoPixAutomatico] = useState(true)
+
+const [mostrarDescontoPix, setMostrarDescontoPix] = useState(true)
 
   useEffect(() => {
     carregarConfiguracoes()
@@ -62,9 +68,19 @@ export default function Configuracoes() {
     setEstado(config.estado || '')
     setPrazoPadrao(config.prazo_padrao || '')
     setMensagemOrcamento(config.mensagem_orcamento || '')
-    setMargemPadrao(config.margem_padrao || 60)
+    setMargemPadrao(config.margem_padrao ?? 60)
+    setTaxaCartao(config.taxa_cartao ?? 5.04)
+
+setDescontoPixAutomatico(
+  config.desconto_pix_automatico ?? true
+)
+
+setMostrarDescontoPix(
+  config.mostrar_desconto_pix_orcamento ?? true
+)
   }
 
+  
   async function carregarConfiguracoesPrecificacao() {
     const { data, error } = await supabase
       .from('configuracoes_precificacao')
@@ -145,7 +161,12 @@ export default function Configuracoes() {
       outros_custos: Number(outrosCustos || 0),
       pro_labore_desejado: Number(proLabore || 0),
       percentual_crescimento: Number(percentualCrescimento || 0),
-      margem_padrao: Number(margemPadrao || 0)
+      margem_padrao: Number(margemPadrao || 0),
+      taxa_cartao: Number(taxaCartao || 0),
+
+      desconto_pix_automatico: descontoPixAutomatico,
+
+      mostrar_desconto_pix_orcamento: mostrarDescontoPix,
     }
 
     let erroFinanceiro = null
@@ -499,6 +520,58 @@ export default function Configuracoes() {
           <p className="text-sm text-gray-500 mt-4">
             Esses dados alimentam automaticamente Precificação, Metas e Dashboard.
           </p>
+
+          <div className="border-t mt-8 pt-8">
+  <h3 className="text-lg font-bold text-gray-800 mb-4">
+    Política comercial
+  </h3>
+
+  <div className="grid grid-cols-3 gap-4">
+
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Taxa do cartão (%)
+      </label>
+
+      <input
+        type="number"
+        step="0.01"
+        value={taxaCartao}
+        onChange={(e) => setTaxaCartao(e.target.value)}
+        className="w-full border rounded-xl px-4 py-3"
+      />
+    </div>
+
+    <label className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+      <input
+        type="checkbox"
+        checked={descontoPixAutomatico}
+        onChange={(e) => setDescontoPixAutomatico(e.target.checked)}
+      />
+
+      <span className="text-sm text-gray-700">
+        Calcular desconto PIX automaticamente
+      </span>
+    </label>
+
+    <label className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+      <input
+        type="checkbox"
+        checked={mostrarDescontoPix}
+        onChange={(e) => setMostrarDescontoPix(e.target.checked)}
+      />
+
+      <span className="text-sm text-gray-700">
+        Mostrar observação de desconto PIX no orçamento
+      </span>
+    </label>
+
+  </div>
+
+  <p className="text-sm text-gray-500 mt-4">
+    A taxa do cartão será usada para calcular o valor de referência e o desconto PIX equivalente.
+  </p>
+</div>
 
         </div>
 

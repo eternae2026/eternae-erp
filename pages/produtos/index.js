@@ -9,6 +9,7 @@ export default function Produtos() {
   const [composicao, setComposicao] = useState([])
   const [produtoSelecionado, setProdutoSelecionado] = useState(null)
   const [openFicha, setOpenFicha] = useState(false)
+  const [produtoEditando, setProdutoEditando] = useState(null)
 
   const [nome, setNome] = useState('')
   const [categoria, setCategoria] = useState('')
@@ -69,31 +70,85 @@ export default function Produtos() {
   }, [])
 
   async function salvarProduto() {
+  const dadosProduto = {
+    nome,
+    categoria,
+    descricao,
+    margem_lucro: Number(margemLucro || 0)
+  }
+
+  if (produtoEditando) {
     const { data, error } = await supabase
       .from('produtos')
-      .insert([
-        {
-  nome,
-  categoria,
-  descricao,
-  tempo_producao: 0,
-  margem_lucro: Number(margemLucro || 0)
-}
-      ])
+      .update(dadosProduto)
+      .eq('id', produtoEditando.id)
       .select()
 
     if (error) {
-      console.log('Erro ao salvar produto:', error)
-      alert('Erro ao salvar produto.')
+      console.log('Erro ao editar produto:', error)
+      alert('Erro ao editar produto.')
       return
     }
 
-    setProdutos([data[0], ...produtos])
+    setProdutos(
+      produtos.map(produto =>
+        produto.id === produtoEditando.id ? data[0] : produto
+      )
+    )
+
+    setProdutoEditando(null)
     setNome('')
     setCategoria('')
     setDescricao('')
     setMargemLucro('60')
+
+    alert('Produto atualizado!')
+    return
   }
+
+  const { data, error } = await supabase
+    .from('produtos')
+    .insert([
+      {
+        ...dadosProduto,
+        tempo_producao: 0
+      }
+    ])
+    .select()
+
+  if (error) {
+    console.log('Erro ao salvar produto:', error)
+    alert('Erro ao salvar produto.')
+    return
+  }
+
+  setProdutos([data[0], ...produtos])
+  setNome('')
+  setCategoria('')
+  setDescricao('')
+  setMargemLucro('60')
+}
+
+function editarProduto(produto) {
+  
+  window.scrollTo({
+  top: 0,
+  behavior: 'smooth'
+})
+  setProdutoEditando(produto)
+  setNome(produto.nome || '')
+  setCategoria(produto.categoria || '')
+  setDescricao(produto.descricao || '')
+  setMargemLucro(produto.margem_lucro ?? '60')
+}
+
+function cancelarEdicao() {
+  setProdutoEditando(null)
+  setNome('')
+  setCategoria('')
+  setDescricao('')
+  setMargemLucro('60')
+}
 
   async function excluirProduto(id) {
     const confirmar = confirm('Tem certeza que deseja excluir este produto?')
@@ -197,7 +252,7 @@ export default function Produtos() {
 
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-8">
           <h2 className="text-xl font-bold text-gray-800 mb-4">
-            Novo Produto
+            {produtoEditando ? 'Editar Produto' : 'Novo Produto'}
           </h2>
 
           <div className="grid grid-cols-4 gap-4 mb-4">
@@ -225,12 +280,25 @@ export default function Produtos() {
               className="border rounded-xl px-4 py-3"
             />
 
-            <button
-              onClick={salvarProduto}
-              className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
-            >
-              Salvar Produto
-            </button>
+            <div className="flex gap-3">
+
+  <button
+    onClick={salvarProduto}
+    className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
+  >
+    {produtoEditando ? 'Salvar Alterações' : 'Salvar Produto'}
+  </button>
+
+  {produtoEditando && (
+    <button
+      onClick={cancelarEdicao}
+      className="bg-gray-200 text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-300 transition"
+    >
+      Cancelar
+    </button>
+  )}
+
+</div>
           </div>
 
           <textarea
@@ -249,7 +317,7 @@ export default function Produtos() {
                 <th className="text-left p-4 text-gray-600">Produto</th>
                 <th className="text-left p-4 text-gray-600">Categoria</th>
                                 <th className="text-left p-4 text-gray-600">Tempo</th>
-                <th className="text-left p-4 text-gray-600">Margem</th>
+                <th className="text-left p-4 text-gray-600">Margem desejada</th>
                 <th className="text-left p-4 text-gray-600">Ações</th>
               </tr>
             </thead>
@@ -285,6 +353,14 @@ export default function Produtos() {
 
                   <td className="p-4">
                     <div className="flex gap-4">
+                      
+                      <button
+  onClick={() => editarProduto(produto)}
+  className="text-gray-700 hover:text-gray-900"
+>
+  Editar
+</button>
+
                       <button
                         onClick={() => abrirFichaTecnica(produto)}
                         className="text-blue-600 hover:text-blue-800"

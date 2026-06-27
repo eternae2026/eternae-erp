@@ -183,6 +183,32 @@ export default function Precificacao() {
     return custoTotalProduto() / (1 - margem)
   }
 
+function taxaCartao() {
+  return Number(configuracao?.taxa_cartao || 0) / 100
+}
+
+function precoCartao() {
+  const taxa = taxaCartao()
+  const precoPix = precoSugerido()
+
+  if (taxa >= 1) return 0
+
+  return precoPix / (1 - taxa)
+}
+
+function descontoPixPercentual() {
+  const cartao = precoCartao()
+  const pix = precoSugerido()
+
+  if (cartao <= 0) return 0
+
+  return ((cartao - pix) / cartao) * 100
+}
+
+function diferencaPixCartao() {
+  return precoCartao() - precoSugerido()
+}
+
   function lucroSugerido() {
     return precoSugerido() - custoTotalProduto()
   }
@@ -435,7 +461,7 @@ export default function Precificacao() {
 
               </div>
 
-              <div className="grid grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-3 gap-4 mb-6">
 
                 <div className="bg-gray-900 text-white rounded-xl p-4">
                   <p className="text-sm text-gray-300">Custo total</p>
@@ -445,11 +471,25 @@ export default function Precificacao() {
                 </div>
 
                 <div className="bg-green-50 rounded-xl p-4">
-                  <p className="text-sm text-green-700">Preço sugerido</p>
-                  <p className="text-xl font-bold text-green-700">
-                    {formatarMoeda(precoSugerido())}
-                  </p>
-                </div>
+  <p className="text-sm text-green-700">Preço PIX</p>
+  <p className="text-xl font-bold text-green-700">
+    {formatarMoeda(precoSugerido())}
+  </p>
+</div>
+
+<div className="bg-blue-50 rounded-xl p-4">
+  <p className="text-sm text-blue-700">Preço cartão</p>
+  <p className="text-xl font-bold text-blue-700">
+    {formatarMoeda(precoCartao())}
+  </p>
+</div>
+
+<div className="bg-purple-50 rounded-xl p-4">
+  <p className="text-sm text-purple-700">Desconto PIX</p>
+  <p className="text-xl font-bold text-purple-700">
+    {formatarNumero(descontoPixPercentual())}%
+  </p>
+</div>
 
                 <div className="bg-blue-50 rounded-xl p-4">
                   <p className="text-sm text-blue-700">Lucro sugerido</p>
