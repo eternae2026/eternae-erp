@@ -250,18 +250,26 @@ function cancelarEdicao() {
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-8">
+        <div className={`bg-white rounded-2xl p-6 shadow-sm mb-8 border ${
+  produtoEditando ? 'border-blue-200' : 'border-transparent'
+}`}>
           <h2 className="text-xl font-bold text-gray-800 mb-4">
             {produtoEditando ? 'Editar Produto' : 'Novo Produto'}
           </h2>
 
-          <div className="grid grid-cols-4 gap-4 mb-4">
+          {produtoEditando && (
+  <p className="text-sm text-gray-500 mb-4">
+    Atualize as informações do produto. As alterações serão utilizadas apenas em novos orçamentos e pedidos.
+  </p>
+)}
+
+          <div className="grid grid-cols-3 gap-4 mb-4">
             <input
               type="text"
               placeholder="Nome do produto"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              className="border rounded-xl px-4 py-3"
+              className="border rounded-xl px-4 py-2.5"
             />
 
             <input
@@ -280,34 +288,36 @@ function cancelarEdicao() {
               className="border rounded-xl px-4 py-3"
             />
 
-            <div className="flex gap-3">
+            
+          </div>
 
-  <button
-    onClick={salvarProduto}
-    className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
-  >
-    {produtoEditando ? 'Salvar Alterações' : 'Salvar Produto'}
-  </button>
+          <textarea
+  rows="3"
+  placeholder="Descrição do produto"
+  value={descricao}
+  onChange={(e) => setDescricao(e.target.value)}
+  className="w-full border rounded-xl px-4 py-3"
+/>
+
+<div className="flex justify-end gap-3 mt-4">
 
   {produtoEditando && (
     <button
       onClick={cancelarEdicao}
-      className="bg-gray-200 text-gray-700 px-5 py-3 rounded-xl hover:bg-gray-300 transition"
+      className="bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl hover:bg-gray-100 transition whitespace-nowrap"
     >
       Cancelar
     </button>
   )}
 
-</div>
-          </div>
+  <button
+    onClick={salvarProduto}
+    className="bg-gray-900 text-white px-6 py-3 rounded-xl hover:bg-gray-800 transition whitespace-nowrap"
+  >
+    {produtoEditando ? 'Salvar Alterações' : 'Salvar Produto'}
+  </button>
 
-          <textarea
-            rows="3"
-            placeholder="Descrição do produto"
-            value={descricao}
-            onChange={(e) => setDescricao(e.target.value)}
-            className="w-full border rounded-xl px-4 py-3"
-          />
+</div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
@@ -352,29 +362,28 @@ function cancelarEdicao() {
                   </td>
 
                   <td className="p-4">
-                    <div className="flex gap-4">
-                      
-                      <button
-  onClick={() => editarProduto(produto)}
-  className="text-gray-700 hover:text-gray-900"
->
-  Editar
-</button>
+                    <div className="flex gap-2">
+  <button
+    onClick={() => abrirFichaTecnica(produto)}
+    className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-sm hover:bg-blue-100 transition"
+  >
+    Ficha Técnica
+  </button>
 
-                      <button
-                        onClick={() => abrirFichaTecnica(produto)}
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        ⚙️ Ficha Técnica
-                      </button>
+  <button
+    onClick={() => editarProduto(produto)}
+    className="bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-sm hover:bg-gray-100 transition"
+  >
+    Editar
+  </button>
 
-                      <button
-                        onClick={() => excluirProduto(produto.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        Excluir
-                      </button>
-                    </div>
+  <button
+    onClick={() => excluirProduto(produto.id)}
+    className="bg-red-50 text-red-700 px-3 py-2 rounded-lg text-sm hover:bg-red-100 transition"
+  >
+    Excluir
+  </button>
+</div>
                   </td>
                 </tr>
               ))}
