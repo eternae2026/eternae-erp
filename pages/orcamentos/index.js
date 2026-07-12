@@ -2,16 +2,20 @@ import { useEffect, useState } from 'react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import OrcamentoModal from '../../components/OrcamentoModal'
+import AprovacaoOrcamentoModal from '../../components/AprovacaoOrcamentoModal'
 import Sidebar from '../../components/Sidebar'
 import { supabase } from '../../lib/supabase'
 
 export default function Orcamentos() {
   const [openModal, setOpenModal] = useState(false)
   const [orcamentoEditando, setOrcamentoEditando] = useState(null)
+  const [openAprovacao, setOpenAprovacao] = useState(false)
+const [orcamentoParaAprovar, setOrcamentoParaAprovar] = useState(null)
   const [clientes, setClientes] = useState([])
   const [produtos, setProdutos] = useState([])
   const [orcamentos, setOrcamentos] = useState([])
-  const [configuracoes, setConfiguracoes] = useState(null)
+const [configuracoes, setConfiguracoes] = useState(null)
+const [politicaComercial, setPoliticaComercial] = useState(null)
 
   async function carregarClientes() {
     const { data, error } = await supabase
@@ -55,6 +59,20 @@ export default function Orcamentos() {
 
     setConfiguracoes(data)
   }
+
+  async function carregarPoliticaComercial() {
+  const { data, error } = await supabase
+    .from('configuracoes_precificacao')
+    .select('*')
+    .limit(1)
+
+  if (error) {
+    console.log('Erro ao carregar política comercial:', error)
+    return
+  }
+
+  setPoliticaComercial(data?.[0] || null)
+}
 
   async function carregarOrcamentos() {
     const { data: listaOrcamentos, error } = await supabase
@@ -104,11 +122,12 @@ export default function Orcamentos() {
   }
 
   useEffect(() => {
-    carregarClientes()
-    carregarProdutos()
-    carregarConfiguracoes()
-    carregarOrcamentos()
-  }, [])
+  carregarClientes()
+  carregarProdutos()
+  carregarConfiguracoes()
+  carregarPoliticaComercial()
+  carregarOrcamentos()
+}, [])
 
   async function salvarNovoOrcamento(orcamento) {
     const { itens, ...dadosOrcamento } = orcamento
@@ -239,9 +258,23 @@ export default function Orcamentos() {
     )
   }
 
-  async function converterEmPedido(orcamento) {
-    const confirmar = confirm('Deseja aprovar este orçamento e gerar o pedido automaticamente?')
-    if (!confirmar) return
+  function abrirAprovacaoOrcamento(orcamento) {
+  setOrcamentoParaAprovar(orcamento)
+  setOpenAprovacao(true)
+}
+
+  async function converterEmPedido(orcamento, formaPagamento = 'Cartão') {
+        const valorOrcamento = Number(orcamento.valor || 0)
+const taxaPix = Number(politicaComercial?.taxa_cartao || 0)
+const descontoPixValor =
+  formaPagamento === 'PIX'
+    ? valorOrcamento * (taxaPix / 100)
+    : 0
+
+const valorFinal =
+  formaPagamento === 'PIX'
+    ? valorOrcamento - descontoPixValor
+    : valorOrcamento
 
     const { data: pedidoCriado, error: erroPedido } = await supabase
       .from('pedidos')
@@ -249,7 +282,11 @@ export default function Orcamentos() {
         {
           cliente_id: orcamento.cliente_id,
           orcamento_id: orcamento.id,
-          valor: orcamento.valor,
+          valor: valorFinal,
+forma_pagamento: formaPagamento,
+valor_referencia: valorOrcamento,
+desconto_pix_valor: descontoPixValor,
+desconto_pix_percentual: formaPagamento === 'PIX' ? taxaPix : 0,
           etapa_producao: 'Aguardando Pagamento',
           estoque_baixado: false
         }
@@ -271,20 +308,40 @@ export default function Orcamentos() {
 
     const novoPedido = pedidoCriado[0]
 
+    await supabase
+  .from('pedido_timeline')
+  .insert([
+    {
+      pedido_id: novoPedido.id,
+      titulo: 'Pedido criado',
+      descricao:
+        'Pedido gerado automaticamente a partir da aprovação do orçamento.',
+      tipo: 'sucesso'
+    },
+    {
+      pedido_id: novoPedido.id,
+      titulo: 'Cobrança gerada',
+      descricao: `Forma de pagamento: ${formaPagamento}`,
+      tipo: 'informacao'
+    }
+  ])
+
     const { error: erroFinanceiro } = await supabase
       .from('financeiro')
       .insert([
         {
           pedido_id: novoPedido.id,
           cliente_id: orcamento.cliente_id,
-          valor: orcamento.valor,
-          forma_pagamento: 'PIX',
+          valor: valorFinal,
+forma_pagamento: formaPagamento,
           status: 'Pendente'
         }
       ])
 
     if (erroFinanceiro) {
       console.log('Erro ao gerar cobrança:', erroFinanceiro)
+      setOpenAprovacao(false)
+setOrcamentoParaAprovar(null)
       alert('Pedido criado, mas houve erro ao gerar a cobrança financeira.')
       await carregarOrcamentos()
       return
@@ -303,6 +360,9 @@ export default function Orcamentos() {
       await carregarOrcamentos()
       return
     }
+
+    setOpenAprovacao(false)
+    setOrcamentoParaAprovar(null)
 
     alert('Orçamento aprovado, pedido criado e cobrança gerada com sucesso!')
     await carregarOrcamentos()
@@ -476,47 +536,58 @@ doc.text(`Data: ${formatarData(orcamento.created_at)}`, 20, 77)
   const finalY = doc.lastAutoTable.finalY || 110
 
   // Total
-  doc.setFillColor(248, 250, 252)
-  doc.roundedRect(116, finalY + 10, 80, 24, 3, 3, 'F')
+const valorOrcamento = orcamento.valor_referencia || orcamento.valor
+const descontoPix = orcamento.desconto_pix_percentual || politicaComercial?.taxa_cartao || 0
 
-  doc.setTextColor(31, 41, 55)
-  doc.setFontSize(11)
-  doc.setFont(undefined, 'normal')
-  doc.text('Total do orçamento', 122, finalY + 20)
+doc.setFillColor(248, 250, 252)
+doc.roundedRect(116, finalY + 10, 80, 24, 3, 3, 'F')
 
-  doc.setFontSize(16)
+doc.setTextColor(31, 41, 55)
+doc.setFontSize(11)
+doc.setFont(undefined, 'normal')
+doc.text('Total do orçamento', 122, finalY + 20)
+
+doc.setFontSize(16)
+doc.setFont(undefined, 'bold')
+doc.text(formatarMoeda(valorOrcamento), 190, finalY + 20, { align: 'right' })
+
+let y = finalY + 48
+
+// Condições
+doc.setFontSize(12)
+doc.setFont(undefined, 'bold')
+doc.text('Condições comerciais', 14, y)
+
+y += 8
+
+doc.setFontSize(10)
+doc.setFont(undefined, 'normal')
+
+if (prazo) {
+  doc.text(`Prazo de produção: ${prazo}`, 14, y)
+  y += 7
+}
+
+if (descontoPix > 0) {
   doc.setFont(undefined, 'bold')
-  doc.text(formatarMoeda(orcamento.valor), 190, finalY + 20, { align: 'right' })
-
-  let y = finalY + 48
-
-  // Condições
-  doc.setFontSize(12)
-  doc.setFont(undefined, 'bold')
-  doc.text('Condições comerciais', 14, y)
-
-  y += 8
-
-  doc.setFontSize(10)
+  doc.text(`Pagamento via PIX garante ${Number(descontoPix).toFixed(2)}% de desconto.`, 14, y)
+  y += 7
   doc.setFont(undefined, 'normal')
+}
 
-  if (prazo) {
-    doc.text(`Prazo de produção: ${prazo}`, 14, y)
-    y += 7
-  }
+doc.text(
+  'O prazo de produção inicia após aprovação da arte e confirmação do pagamento.',
+  14,
+  y,
+  { maxWidth: 180 }
+)
+y += 10
 
+if (mensagem) {
+  doc.setFont(undefined, 'normal')
   doc.text(mensagem, 14, y, { maxWidth: 180 })
   y += 14
-
-  if (pix) {
-    doc.setFont(undefined, 'bold')
-    doc.text('Pagamento via PIX', 14, y)
-    y += 7
-
-    doc.setFont(undefined, 'normal')
-    doc.text(`Chave PIX: ${pix}`, 14, y)
-    y += 10
-  }
+}
 
   // Rodapé
   doc.setDrawColor(230, 230, 230)
@@ -635,7 +706,7 @@ doc.text(`Data: ${formatarData(orcamento.created_at)}`, 20, 77)
 
                       {!jaVirouPedido(orcamento) && (
                         <button
-                          onClick={() => converterEmPedido(orcamento)}
+                          onClick={() => abrirAprovacaoOrcamento(orcamento)}
                           className="text-green-600 hover:text-green-800"
                         >
                           Aprovar e Gerar Pedido
@@ -676,7 +747,21 @@ doc.text(`Data: ${formatarData(orcamento.created_at)}`, 20, 77)
           clientes={clientes}
           produtos={produtos}
           orcamento={orcamentoEditando}
+          politicaComercial={politicaComercial}
         />
+
+        <AprovacaoOrcamentoModal
+  open={openAprovacao}
+  onClose={() => {
+    setOpenAprovacao(false)
+    setOrcamentoParaAprovar(null)
+  }}
+  orcamento={orcamentoParaAprovar}
+  politicaComercial={politicaComercial}
+  onConfirmar={(formaPagamento) => {
+  converterEmPedido(orcamentoParaAprovar, formaPagamento)
+}}
+/>
       </main>
     </div>
   )

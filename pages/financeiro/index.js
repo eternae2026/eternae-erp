@@ -112,35 +112,81 @@ export default function Financeiro() {
   }
 
   async function confirmarRecebimento(dados) {
-    const { data, error } = await supabase
-      .from('financeiro')
-      .update(dados)
-      .eq('id', lancamentoSelecionado.id)
-      .select(`
-        *,
-        clientes (
-          nome
-        ),
-        pedidos (
-          id
-        )
-      `)
+  const pedidoId = lancamentoSelecionado?.pedido_id
 
-    if (error) {
-      console.log('Erro ao receber pagamento:', error)
-      alert('Erro ao receber pagamento.')
+  const { data, error } = await supabase
+    .from('financeiro')
+    .update(dados)
+    .eq('id', lancamentoSelecionado.id)
+    .select(`
+      *,
+      clientes (
+        nome
+      ),
+      pedidos (
+        id
+      )
+    `)
+
+  if (error) {
+    console.log('Erro ao receber pagamento:', error)
+    alert('Erro ao receber pagamento.')
+    return
+  }
+
+  if (pedidoId) {
+    const { error: erroPedido } = await supabase
+      .from('pedidos')
+      .update({
+        etapa_producao: 'Arte'
+      })
+      .eq('id', pedidoId)
+
+    if (erroPedido) {
+      console.log('Erro ao avançar pedido para Arte:', erroPedido)
+      alert(
+        'Pagamento recebido, mas houve erro ao avançar o pedido para Arte.'
+      )
       return
     }
 
-    setLancamentos(
-      lancamentos.map(item =>
-        item.id === lancamentoSelecionado.id ? data[0] : item
-      )
-    )
+    const { error: erroTimeline } = await supabase
+      .from('pedido_timeline')
+      .insert([
+        {
+          pedido_id: pedidoId,
+          titulo: 'Pagamento confirmado',
+          descricao:
+            'Recebimento confirmado. O pedido foi encaminhado automaticamente para a etapa de Arte.',
+          tipo: 'sucesso'
+        }
+      ])
 
-    setOpenModal(false)
-    setLancamentoSelecionado(null)
+    if (erroTimeline) {
+      console.log(
+        'Erro ao registrar pagamento na timeline:',
+        erroTimeline
+      )
+      alert(
+        'Pagamento recebido e pedido avançado, mas houve erro ao registrar o evento na timeline.'
+      )
+      return
+    }
   }
+
+  setLancamentos(
+    lancamentos.map(item =>
+      item.id === lancamentoSelecionado.id ? data[0] : item
+    )
+  )
+
+  setOpenModal(false)
+  setLancamentoSelecionado(null)
+
+  alert(
+    'Pagamento confirmado e pedido encaminhado para Arte!'
+  )
+}
 
   async function salvarSaida(dados) {
     const { error } = await supabase

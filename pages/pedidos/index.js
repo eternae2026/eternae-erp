@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import PedidoDetalhesModal from '../../components/PedidoDetalhesModal'
 import Sidebar from '../../components/Sidebar'
 import { supabase } from '../../lib/supabase'
+import PrazoProducaoModal from '../../components/PrazoProducaoModal'
 
 export default function Pedidos() {
   const [pedidos, setPedidos] = useState([])
@@ -23,7 +24,7 @@ const [dataFinal, setDataFinal] = useState('')
   const [openDetalhes, setOpenDetalhes] = useState(false)
   const [openListaPedidos, setOpenListaPedidos] = useState(false)
   const [pedidoSelecionado, setPedidoSelecionado] = useState(null)
-
+const [visualizacao, setVisualizacao] = useState('lista')
   const etapasProducao = [
     'Aguardando Pagamento',
     'Arte',
@@ -33,6 +34,12 @@ const [dataFinal, setDataFinal] = useState('')
     'Entregue',
     'Cancelado'
   ]
+
+  const [openPrazoProducao, setOpenPrazoProducao] =
+  useState(false)
+
+const [pedidoPrazo, setPedidoPrazo] =
+  useState(null)
 
   const orcamentoItensSelect = `
     id,
@@ -57,13 +64,22 @@ const [dataFinal, setDataFinal] = useState('')
           nome
         ),
         financeiro (
-          id,
-          status
-        ),
+  id,
+  status,
+  forma_pagamento,
+  valor
+),
         producoes (
           id,
           status
         ),
+        pedido_timeline (
+  id,
+  titulo,
+  descricao,
+  tipo,
+  created_at
+),
         orcamentos (
           id,
           observacoes,
@@ -327,7 +343,11 @@ const [dataFinal, setDataFinal] = useState('')
     return true
   }
 
-  async function atualizarEtapaPedido(pedido, novaEtapa) {
+  async function atualizarEtapaPedido(
+  pedido,
+  novaEtapa,
+  eventosTimeline = []
+) {
     const dadosAtualizacao = {
       etapa_producao: novaEtapa
     }
@@ -360,6 +380,13 @@ const [dataFinal, setDataFinal] = useState('')
           id,
           status
         ),
+        pedido_timeline (
+        id,
+        titulo,
+        descricao,
+        tipo,
+        created_at
+        ),
         orcamentos (
           id,
           observacoes,
@@ -375,11 +402,31 @@ const [dataFinal, setDataFinal] = useState('')
       return
     }
 
-    setPedidos(
-      pedidos.map(item =>
-        item.id === pedido.id ? data[0] : item
-      )
+    if (eventosTimeline.length > 0) {
+  const eventosParaSalvar = eventosTimeline.map(evento => ({
+    pedido_id: pedido.id,
+    titulo: evento.titulo,
+    descricao: evento.descricao,
+    tipo: evento.tipo
+  }))
+
+  const { error: erroTimeline } = await supabase
+    .from('pedido_timeline')
+    .insert(eventosParaSalvar)
+
+  if (erroTimeline) {
+    console.log(
+      'Erro ao registrar mudança de etapa na timeline:',
+      erroTimeline
     )
+
+    alert(
+      'A etapa foi atualizada, mas houve erro ao registrar o histórico.'
+    )
+  }
+}
+
+await carregarPedidos()
   }
 
   async function cancelarPedido(pedido) {
@@ -481,26 +528,171 @@ const [dataFinal, setDataFinal] = useState('')
     alert('Cobrança gerada com sucesso!')
   }
 
-  function avancarPedido(pedido) {
-    const etapaAtual = etapaPedido(pedido)
+  async function avancarPedido(pedido) {
+  const etapaAtual = etapaPedido(pedido)
 
-    if (etapaAtual === 'Cancelado') return
+  if (etapaAtual === 'Cancelado') return
 
-    const indiceAtual = indiceEtapa(etapaAtual)
+  const indiceAtual = indiceEtapa(etapaAtual)
 
-    if (indiceAtual === etapasProducao.length - 1) return
+  if (indiceAtual === etapasProducao.length - 1) return
 
-    const proximaEtapa = etapasProducao[indiceAtual + 1]
+  const proximaEtapa = etapasProducao[indiceAtual + 1]
 
-    if (proximaEtapa === 'Cancelado') return
+  if (proximaEtapa === 'Cancelado') return
 
-    if (proximaEtapa === 'Arte' && statusPagamento(pedido) !== 'Recebido') {
-      alert('Só é possível avançar para Arte após o pagamento ser recebido.')
-      return
-    }
-
-    atualizarEtapaPedido(pedido, proximaEtapa)
+  if (
+    proximaEtapa === 'Arte' &&
+    statusPagamento(pedido) !== 'Recebido'
+  ) {
+    alert(
+      'Só é possível avançar para Arte após o pagamento ser recebido.'
+    )
+    return
   }
+
+  const eventosTimeline = []
+
+  if (
+    etapaAtual === 'Arte' &&
+    proximaEtapa === 'Aguardando Aprovação'
+  ) {
+    eventosTimeline.push({
+      titulo: 'Arte enviada ao cliente',
+      descricao:
+        'A arte foi enviada e está aguardando a aprovação do cliente.',
+      tipo: 'informacao'
+    })
+  }
+
+  if (
+  etapaAtual === 'Aguardando Aprovação' &&
+  proximaEtapa === 'Produção'
+) {
+  setPedidoPrazo(pedido)
+  setOpenPrazoProducao(true)
+  return
+}
+
+  if (
+    etapaAtual === 'Produção' &&
+    proximaEtapa === 'Pronto'
+  ) {
+    eventosTimeline.push({
+      titulo: 'Produção concluída',
+      descricao:
+        'O pedido está pronto para entrega ou envio.',
+      tipo: 'sucesso'
+    })
+  }
+
+  if (
+    etapaAtual === 'Pronto' &&
+    proximaEtapa === 'Entregue'
+  ) {
+    eventosTimeline.push({
+      titulo: 'Pedido entregue',
+      descricao:
+        'O pedido foi finalizado e entregue ao cliente.',
+      tipo: 'sucesso'
+    })
+  }
+
+  await atualizarEtapaPedido(
+    pedido,
+    proximaEtapa,
+    eventosTimeline
+  )
+}
+
+async function confirmarPrazoProducao(prazoDias) {
+  if (!pedidoPrazo) return
+
+  const prazoNumero = Number(prazoDias)
+
+  if (!Number.isInteger(prazoNumero) || prazoNumero <= 0) {
+    alert('Informe um prazo válido em dias úteis.')
+    return
+  }
+
+  const dataInicio = new Date()
+  const dataPrevista = new Date(dataInicio)
+
+  let diasUteisAdicionados = 0
+
+  while (diasUteisAdicionados < prazoNumero) {
+    dataPrevista.setDate(dataPrevista.getDate() + 1)
+
+    const diaSemana = dataPrevista.getDay()
+
+    if (diaSemana !== 0 && diaSemana !== 6) {
+      diasUteisAdicionados++
+    }
+  }
+
+  function formatarDataBanco(data) {
+    const ano = data.getFullYear()
+    const mes = String(data.getMonth() + 1).padStart(2, '0')
+    const dia = String(data.getDate()).padStart(2, '0')
+
+    return `${ano}-${mes}-${dia}`
+  }
+
+  const { error: erroPedido } = await supabase
+    .from('pedidos')
+    .update({
+      etapa_producao: 'Produção',
+      data_inicio_producao: dataInicio.toISOString(),
+      prazo_producao_dias: prazoNumero,
+      data_prevista_entrega: formatarDataBanco(dataPrevista)
+    })
+    .eq('id', pedidoPrazo.id)
+
+  if (erroPedido) {
+    console.log('Erro ao iniciar produção:', erroPedido)
+    alert('Erro ao iniciar a produção.')
+    return
+  }
+
+  const { error: erroTimeline } = await supabase
+    .from('pedido_timeline')
+    .insert([
+      {
+        pedido_id: pedidoPrazo.id,
+        titulo: 'Arte aprovada',
+        descricao:
+          'A arte foi aprovada pelo cliente.',
+        tipo: 'sucesso'
+      },
+      {
+        pedido_id: pedidoPrazo.id,
+        titulo: 'Produção iniciada',
+        descricao:
+          `Produção iniciada com prazo de ${prazoNumero} dias úteis. Previsão: ${dataPrevista.toLocaleDateString('pt-BR')}.`,
+        tipo: 'informacao'
+      }
+    ])
+
+  if (erroTimeline) {
+    console.log(
+      'Erro ao registrar início da produção na timeline:',
+      erroTimeline
+    )
+
+    alert(
+      'A produção foi iniciada, mas houve erro ao registrar o histórico.'
+    )
+  }
+
+  setOpenPrazoProducao(false)
+  setPedidoPrazo(null)
+
+  await carregarPedidos()
+
+  alert(
+    `Produção iniciada! Previsão: ${dataPrevista.toLocaleDateString('pt-BR')}.`
+  )
+}
 
   function voltarPedido(pedido) {
     const etapaAtual = etapaPedido(pedido)
@@ -565,16 +757,42 @@ const [dataFinal, setDataFinal] = useState('')
       <main className="flex-1 p-8 overflow-hidden">
 
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800">
-              Pedidos
-            </h1>
+  <div>
+    <h1 className="text-3xl font-bold text-gray-800">
+      Pedidos
+    </h1>
 
-            <p className="text-gray-500">
-              Acompanhe pagamento, arte, aprovação, produção, entrega e cancelamentos dos pedidos.
-            </p>
-          </div>
-        </div>
+    <p className="text-gray-500">
+      Acompanhe pagamento, arte, aprovação, produção, entrega e cancelamentos dos pedidos.
+    </p>
+  </div>
+
+  <div className="flex gap-3">
+    <button
+      type="button"
+      onClick={() => setVisualizacao('lista')}
+      className={`px-5 py-3 rounded-xl transition ${
+        visualizacao === 'lista'
+          ? 'bg-gray-900 text-white'
+          : 'bg-white border border-gray-300 text-gray-700'
+      }`}
+    >
+      📋 Lista
+    </button>
+
+    <button
+      type="button"
+      onClick={() => setVisualizacao('painel')}
+      className={`px-5 py-3 rounded-xl transition ${
+        visualizacao === 'painel'
+          ? 'bg-gray-900 text-white'
+          : 'bg-white border border-gray-300 text-gray-700'
+      }`}
+    >
+      📌 Painel
+    </button>
+  </div>
+</div>
 
         <div className="bg-white rounded-2xl p-4 shadow-sm mb-6">
   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
@@ -667,7 +885,7 @@ const [dataFinal, setDataFinal] = useState('')
 
   </div>
 </div>
-
+      {visualizacao === 'painel' && (
         <div className="overflow-x-auto pb-4">
           <div className="flex gap-5 min-w-max">
 
@@ -714,7 +932,7 @@ const [dataFinal, setDataFinal] = useState('')
                                   </p>
 
                                   <p className="text-sm text-gray-500 mt-1">
-                                    {formatarMoeda(calcularTotalPedido(pedido))}
+                                    {formatarMoeda(pedido.valor)}
                                   </p>
                                 </div>
 
@@ -762,38 +980,6 @@ const [dataFinal, setDataFinal] = useState('')
                                 </button>
                               )}
 
-                              <div className="flex justify-between gap-2 mt-3">
-                                <button
-                                  onClick={() => voltarPedido(pedido)}
-                                  disabled={indiceAtual === 0 || bloqueado}
-                                  className={`flex-1 px-3 py-2 rounded-lg text-xs ${
-                                    indiceAtual === 0 || bloqueado
-                                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                      : 'bg-gray-800 text-white hover:bg-gray-900'
-                                  }`}
-                                >
-                                  ←
-                                </button>
-
-                                <button
-                                  onClick={() => avancarPedido(pedido)}
-                                  disabled={
-                                    bloqueado ||
-                                    etapaAtual === 'Entregue' ||
-                                    indiceAtual === etapasProducao.length - 1
-                                  }
-                                  className={`flex-1 px-3 py-2 rounded-lg text-xs ${
-                                    bloqueado ||
-                                    etapaAtual === 'Entregue' ||
-                                    indiceAtual === etapasProducao.length - 1
-                                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                      : 'bg-gray-800 text-white hover:bg-gray-900'
-                                  }`}
-                                >
-                                  →
-                                </button>
-                              </div>
-
                             </div>
                           )
                         })}
@@ -807,6 +993,126 @@ const [dataFinal, setDataFinal] = useState('')
           </div>
         </div>
 
+        )}
+
+{visualizacao === 'lista' && (
+  <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+
+    <table className="w-full">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="p-4 text-left">Cliente</th>
+          <th className="p-4 text-left">Data</th>
+          <th className="p-4 text-left">Pagamento</th>
+          <th className="p-4 text-left">Valor</th>
+          <th className="p-4 text-left">Etapa</th>
+          <th className="p-4 text-center">Ações</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {pedidosFiltrados.map(pedido => (
+          <tr
+            key={pedido.id}
+            className="border-t hover:bg-gray-50"
+          >
+            <td className="p-4 font-medium">
+              {pedido.clientes?.nome}
+            </td>
+
+            <td className="p-4 text-gray-500">
+              {new Date(
+                pedido.created_at
+              ).toLocaleDateString('pt-BR')}
+            </td>
+
+            <td className="p-4 align-middle">
+  {(() => {
+    const pagamento = Array.isArray(pedido.financeiro)
+      ? pedido.financeiro[0]?.forma_pagamento
+      : pedido.financeiro?.forma_pagamento
+
+    return (
+      <span
+        className={`px-3 py-1 rounded-full text-sm font-medium ${
+          pagamento === 'PIX'
+            ? 'bg-green-50 text-green-700'
+            : 'bg-blue-50 text-blue-700'
+        }`}
+      >
+        {pagamento === 'PIX'
+          ? '🟢 PIX'
+          : '💳 Cartão'}
+      </span>
+    )
+  })()}
+</td>
+
+            <td className="p-4 font-bold text-gray-900">
+  {formatarMoeda(pedido.valor)}
+</td>
+
+            <td className="p-4 align-middle">
+  {(() => {
+    const etapa = etapaPedido(pedido)
+
+    let classe =
+      'bg-gray-100 text-gray-700'
+
+    if (etapa === 'Aguardando Pagamento')
+      classe =
+        'bg-yellow-50 text-yellow-700'
+
+    if (etapa === 'Arte')
+      classe =
+        'bg-purple-50 text-purple-700'
+
+    if (etapa === 'Produção')
+      classe =
+        'bg-blue-50 text-blue-700'
+
+    if (etapa === 'Pronto para envio')
+      classe =
+        'bg-orange-50 text-orange-700'
+
+    if (etapa === 'Enviado')
+      classe =
+        'bg-indigo-50 text-indigo-700'
+
+    if (etapa === 'Entregue')
+      classe =
+        'bg-green-50 text-green-700'
+
+    if (etapa === 'Cancelado')
+      classe =
+        'bg-red-50 text-red-700'
+
+    return (
+      <span
+        className={`px-3 py-1 rounded-full text-sm font-medium ${classe}`}
+      >
+        {etapa}
+      </span>
+    )
+  })()}
+</td>
+
+            <td className="p-4 text-center">
+              <button
+                onClick={() => verPedido(pedido)}
+                className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800"
+              >
+                Ver
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+
+  </div>
+)}
+
 <ListaPedidosModal
   open={openListaPedidos}
   onClose={() => setOpenListaPedidos(false)}
@@ -818,13 +1124,31 @@ const [dataFinal, setDataFinal] = useState('')
 />
 
         <PedidoDetalhesModal
-          open={openDetalhes}
-          onClose={() => {
-            setOpenDetalhes(false)
-            setPedidoSelecionado(null)
-          }}
-          pedido={pedidoSelecionado}
-        />
+  open={openDetalhes}
+  onClose={() => {
+    setOpenDetalhes(false)
+    setPedidoSelecionado(null)
+  }}
+  pedido={pedidoSelecionado}
+  onAvancar={async () => {
+    if (!pedidoSelecionado) return
+
+    await avancarPedido(pedidoSelecionado)
+
+    setOpenDetalhes(false)
+    setPedidoSelecionado(null)
+  }}
+/>
+
+<PrazoProducaoModal
+  open={openPrazoProducao}
+  onClose={() => {
+    setOpenPrazoProducao(false)
+    setPedidoPrazo(null)
+  }}
+  pedido={pedidoPrazo}
+  onConfirmar={confirmarPrazoProducao}
+/>
 
       </main>
     </div>

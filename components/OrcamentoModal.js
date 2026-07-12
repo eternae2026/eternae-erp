@@ -7,11 +7,14 @@ export default function OrcamentoModal({
   onSave,
   clientes,
   produtos,
-  orcamento
+  orcamento,
+  politicaComercial
 }) {
   const [clienteId, setClienteId] = useState('')
-  const [status, setStatus] = useState('Pendente')
-  const [observacoes, setObservacoes] = useState('')
+const [status, setStatus] = useState('Pendente')
+const [observacoes, setObservacoes] = useState('')
+
+const [validadeDias, setValidadeDias] = useState(7)
   const [itens, setItens] = useState([])
   const [kits, setKits] = useState([])
 
@@ -30,14 +33,24 @@ export default function OrcamentoModal({
   useEffect(() => {
     if (orcamento) {
       setClienteId(orcamento.cliente_id || '')
-      setStatus(orcamento.status || 'Pendente')
-      setObservacoes(orcamento.observacoes || '')
-      setItens(orcamento.orcamento_itens || [])
+setStatus(orcamento.status || 'Pendente')
+setObservacoes(orcamento.observacoes || '')
+setItens(orcamento.orcamento_itens || [])
+
+setValidadeDias(
+  orcamento.validade_dias ??
+    politicaComercial?.validade_orcamento_dias ??
+    7
+)
     } else {
       setClienteId('')
-      setStatus('Pendente')
-      setObservacoes('')
-      setItens([])
+setStatus('Pendente')
+setObservacoes('')
+setItens([])
+
+setValidadeDias(
+  politicaComercial?.validade_orcamento_dias ?? 7
+)
     }
 
     limparSelecaoItem()
@@ -183,19 +196,38 @@ export default function OrcamentoModal({
     }, 0)
   }
 
+  function taxaCartao() {
+  return Number(politicaComercial?.taxa_cartao || 0) / 100
+}
+
+function calcularTotalCartao() {
+  return calcularTotal()
+}
+
+function totalAPagar() {
+  return calcularTotalCartao()
+}
+
   function nomeItem(item) {
     return item.nome_item || item.produtos?.nome || 'Item'
   }
 
   function handleSubmit() {
-    onSave({
-      cliente_id: clienteId,
-      valor: calcularTotal(),
-      status,
-      observacoes,
-      itens
-    })
-  }
+  onSave({
+    cliente_id: clienteId,
+
+    valor: calcularTotalCartao(),
+valor_final: calcularTotalCartao(),
+
+    valor_referencia: calcularTotalCartao(),
+
+    validade_dias: Number(validadeDias),
+
+    status,
+    observacoes,
+    itens
+  })
+}
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -381,16 +413,63 @@ export default function OrcamentoModal({
             </div>
           )}
 
-          <div className="flex justify-end mt-5">
-            <div className="bg-gray-900 text-white px-5 py-3 rounded-xl">
-              Total: {formatarMoeda(calcularTotal())}
-            </div>
-          </div>
+                    <div className="grid grid-cols-3 gap-4 mt-5">
+
+  <div className="bg-gray-900 text-white rounded-xl p-4">
+    <p className="text-sm text-gray-300">
+      Valor do orçamento
+    </p>
+
+    <p className="text-xl font-bold">
+      {formatarMoeda(calcularTotalCartao())}
+    </p>
+  </div>
+
+  <div className="bg-blue-50 rounded-xl p-4">
+  <p className="text-sm text-blue-700">
+    Condição comercial
+  </p>
+
+  <p className="text-sm font-medium text-blue-700 mt-1">
+    💚 Pagamento via PIX garante {politicaComercial?.taxa_cartao || 0}% de desconto.
+  </p>
+</div>
+
+  <div className="bg-green-50 rounded-xl p-4">
+  <p className="text-sm text-green-700">
+    Valor da proposta
+  </p>
+
+  <p className="text-xl font-bold text-green-700">
+    {formatarMoeda(totalAPagar())}
+  </p>
+</div>
+
+</div>
+
         </div>
 
         <div className="mt-4">
           <label className="block text-sm text-gray-600 mb-2">
-            Observações
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+
+          
+          <div>
+            <label className="block text-sm text-gray-600 mb-2">
+              Validade do orçamento (dias)
+            </label>
+
+            <input
+              type="number"
+              value={validadeDias}
+              onChange={(e) => setValidadeDias(e.target.value)}
+              className="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-gray-900"
+            />
+          </div>
+
+        </div>
+
+          Observações
           </label>
 
           <textarea

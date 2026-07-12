@@ -34,6 +34,10 @@ const [descontoPixAutomatico, setDescontoPixAutomatico] = useState(true)
 
 const [mostrarDescontoPix, setMostrarDescontoPix] = useState(true)
 
+const [formaPagamentoPadrao, setFormaPagamentoPadrao] = useState('Cartão')
+
+const [validadeOrcamentoDias, setValidadeOrcamentoDias] = useState('7')
+
   useEffect(() => {
     carregarConfiguracoes()
     carregarConfiguracoesPrecificacao()
@@ -80,7 +84,6 @@ setMostrarDescontoPix(
 )
   }
 
-  
   async function carregarConfiguracoesPrecificacao() {
     const { data, error } = await supabase
       .from('configuracoes_precificacao')
@@ -106,6 +109,13 @@ setMostrarDescontoPix(
     setProLabore(config.pro_labore_desejado || '')
     setPercentualCrescimento(config.percentual_crescimento || '')
     setMargemPadrao(config.margem_padrao || 60)
+    setFormaPagamentoPadrao(
+  config.forma_pagamento_padrao || 'Cartão'
+)
+
+setValidadeOrcamentoDias(
+  config.validade_orcamento_dias ?? 7
+)
   }
 
   async function salvarConfiguracoes() {
@@ -167,6 +177,10 @@ setMostrarDescontoPix(
       desconto_pix_automatico: descontoPixAutomatico,
 
       mostrar_desconto_pix_orcamento: mostrarDescontoPix,
+
+      forma_pagamento_padrao: formaPagamentoPadrao,
+
+  validade_orcamento_dias: Number(validadeOrcamentoDias || 0)
     }
 
     let erroFinanceiro = null
@@ -425,6 +439,34 @@ setMostrarDescontoPix(
   </div>
 
   <div>
+  <label className="block text-sm font-medium text-gray-700 mb-2">
+    Forma de pagamento padrão
+  </label>
+
+  <select
+    value={formaPagamentoPadrao}
+    onChange={(e) => setFormaPagamentoPadrao(e.target.value)}
+    className="w-full border rounded-xl px-4 py-3"
+  >
+    <option value="Cartão">Cartão</option>
+    <option value="PIX">PIX</option>
+  </select>
+</div>
+
+<div>
+  <label className="block text-sm font-medium text-gray-700 mb-2">
+    Validade padrão do orçamento (dias)
+  </label>
+
+  <input
+    type="number"
+    value={validadeOrcamentoDias}
+    onChange={(e) => setValidadeOrcamentoDias(e.target.value)}
+    className="w-full border rounded-xl px-4 py-3"
+  />
+</div>
+
+  <div>
     <label className="block text-sm font-medium text-gray-700 mb-2">
       Internet
     </label>
@@ -517,10 +559,6 @@ setMostrarDescontoPix(
 
 </div>
 
-          <p className="text-sm text-gray-500 mt-4">
-            Esses dados alimentam automaticamente Precificação, Metas e Dashboard.
-          </p>
-
           <div className="border-t mt-8 pt-8">
   <h3 className="text-lg font-bold text-gray-800 mb-4">
     Política comercial
@@ -538,6 +576,34 @@ setMostrarDescontoPix(
         step="0.01"
         value={taxaCartao}
         onChange={(e) => setTaxaCartao(e.target.value)}
+        className="w-full border rounded-xl px-4 py-3"
+      />
+    </div>
+
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Forma de pagamento padrão
+      </label>
+
+      <select
+        value={formaPagamentoPadrao}
+        onChange={(e) => setFormaPagamentoPadrao(e.target.value)}
+        className="w-full border rounded-xl px-4 py-3"
+      >
+        <option value="Cartão">Cartão</option>
+        <option value="PIX">PIX</option>
+      </select>
+    </div>
+
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Validade padrão do orçamento (dias)
+      </label>
+
+      <input
+        type="number"
+        value={validadeOrcamentoDias}
+        onChange={(e) => setValidadeOrcamentoDias(e.target.value)}
         className="w-full border rounded-xl px-4 py-3"
       />
     </div>
