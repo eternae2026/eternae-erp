@@ -720,6 +720,62 @@ async function confirmarPrazoProducao(prazoDias) {
     return 'bg-white'
   }
 
+  function prazoVisualPedido(pedido) {
+  if (
+    pedido.etapa_producao !== 'Produção' &&
+    pedido.etapa_producao !== 'Pronto'
+  ) {
+    return null
+  }
+
+  if (!pedido.data_prevista_entrega) {
+    return {
+      texto: 'Prazo não informado',
+      classe: 'bg-gray-100 text-gray-600'
+    }
+  }
+
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+
+  const previsao = new Date(
+    `${pedido.data_prevista_entrega}T00:00:00`
+  )
+
+  const diferencaDias = Math.ceil(
+  (previsao - hoje) / (1000 * 60 * 60 * 24)
+)
+
+  if (
+    pedido.etapa_producao === 'Produção' &&
+    hoje > previsao
+  ) {
+    return {
+      texto: `Atrasado • ${previsao.toLocaleDateString('pt-BR')}`,
+      classe: 'bg-red-100 text-red-700'
+    }
+  }
+
+  if (
+  pedido.etapa_producao === 'Produção' &&
+  diferencaDias >= 0 &&
+  diferencaDias <= 2
+) {
+  return {
+    texto: `Entrega: ${previsao.toLocaleDateString('pt-BR')}`,
+    classe: 'bg-yellow-100 text-yellow-700'
+  }
+}
+
+  return {
+    texto: `Entrega: ${previsao.toLocaleDateString('pt-BR')}`,
+    classe:
+      pedido.etapa_producao === 'Pronto'
+        ? 'bg-green-100 text-green-700'
+        : 'bg-blue-100 text-blue-700'
+  }
+}
+
   function statusVisual(pedido) {
     const etapa = etapaPedido(pedido)
 
@@ -919,6 +975,7 @@ async function confirmarPrazoProducao(prazoDias) {
                           const etapaAtual = etapaPedido(pedido)
                           const visual = statusVisual(pedido)
                           const bloqueado = etapaAtual === 'Cancelado'
+                          const prazoVisual = prazoVisualPedido(pedido)
 
                           return (
                             <div
@@ -944,6 +1001,14 @@ async function confirmarPrazoProducao(prazoDias) {
                               <p className="text-xs text-gray-400 mt-2">
                                 Pedido #{pedido.id.slice(0, 8)}
                               </p>
+
+                              {prazoVisual && (
+  <span
+    className={`inline-flex mt-3 px-2 py-1 rounded-full text-[11px] font-medium ${prazoVisual.classe}`}
+  >
+    {prazoVisual.texto}
+  </span>
+)}
 
                               <div className="grid grid-cols-2 gap-2 mt-4">
                                 <button
@@ -971,15 +1036,7 @@ async function confirmarPrazoProducao(prazoDias) {
                                 )}
                               </div>
 
-                              {!bloqueado && etapaAtual !== 'Entregue' && (
-                                <button
-                                  onClick={() => cancelarPedido(pedido)}
-                                  className="w-full bg-red-50 text-red-700 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-red-100 mt-3"
-                                >
-                                  Cancelar Pedido
-                                </button>
-                              )}
-
+                              
                             </div>
                           )
                         })}

@@ -81,6 +81,81 @@ const descontoPixPercentual = Number(
 const pagamento = formaPagamento()
 const statusFinanceiro = statusPagamento()
 
+function analisarPrazoProducao() {
+  if (!pedido.data_prevista_entrega) {
+    return {
+      tipo: 'sem-prazo',
+      texto: 'Prazo não informado',
+      classe: 'bg-gray-100 text-gray-700'
+    }
+  }
+
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+
+  const dataPrevista = new Date(
+    `${pedido.data_prevista_entrega}T00:00:00`
+  )
+
+  let inicio
+  let fim
+  let atrasado = false
+
+  if (hoje > dataPrevista) {
+    inicio = new Date(dataPrevista)
+    fim = new Date(hoje)
+    atrasado = true
+  } else {
+    inicio = new Date(hoje)
+    fim = new Date(dataPrevista)
+  }
+
+  let diasUteis = 0
+  const cursor = new Date(inicio)
+
+  while (cursor < fim) {
+    cursor.setDate(cursor.getDate() + 1)
+
+    const diaSemana = cursor.getDay()
+
+    if (diaSemana !== 0 && diaSemana !== 6) {
+      diasUteis++
+    }
+  }
+
+  if (atrasado) {
+    return {
+      tipo: 'atrasado',
+      texto: `🔴 Atrasado há ${diasUteis} dias úteis`,
+      classe: 'bg-red-100 text-red-700'
+    }
+  }
+
+  if (diasUteis === 0) {
+    return {
+      tipo: 'vence-hoje',
+      texto: '🟠 Prazo termina hoje',
+      classe: 'bg-orange-100 text-orange-700'
+    }
+  }
+
+  if (diasUteis <= 2) {
+    return {
+      tipo: 'atencao',
+      texto: `🟡 Faltam ${diasUteis} dias úteis`,
+      classe: 'bg-yellow-100 text-yellow-700'
+    }
+  }
+
+  return {
+    tipo: 'no-prazo',
+    texto: `🟢 Faltam ${diasUteis} dias úteis`,
+    classe: 'bg-green-100 text-green-700'
+  }
+}
+
+const situacaoPrazoProducao = analisarPrazoProducao()
+
 const timeline = [...(pedido.pedido_timeline || [])].sort(
   (a, b) => new Date(a.created_at) - new Date(b.created_at)
 )
@@ -297,6 +372,65 @@ const indiceEtapaAtual = etapasStepper.indexOf(etapaAtual)
   </span>
 </div>
           </div>
+
+{pedido.etapa_producao === 'Produção' && (
+  <div className="border rounded-2xl p-5 mb-6 bg-purple-50">
+    <h3 className="font-bold text-gray-800 mb-4">
+      📦 Controle da Produção
+    </h3>
+
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+      <div className="bg-white rounded-xl p-4">
+        <p className="text-sm text-gray-500">
+          Início da produção
+        </p>
+
+        <p className="font-semibold text-gray-800 mt-2">
+          {pedido.data_inicio_producao
+            ? new Date(
+                pedido.data_inicio_producao
+              ).toLocaleDateString('pt-BR')
+            : '-'}
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl p-4">
+        <p className="text-sm text-gray-500">
+          Prazo informado
+        </p>
+
+        <p className="font-semibold text-gray-800 mt-2">
+          {pedido.prazo_producao_dias
+            ? `${pedido.prazo_producao_dias} dias úteis`
+            : '-'}
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl p-4">
+        <p className="text-sm text-gray-500">
+          Data prevista
+        </p>
+
+        <p className="font-semibold text-gray-800 mt-2">
+          {pedido.data_prevista_entrega
+  ? new Date(
+      `${pedido.data_prevista_entrega}T00:00:00`
+    ).toLocaleDateString('pt-BR')
+  : '-'}
+        </p>
+        {pedido.data_prevista_entrega && (
+  <span
+    className={`inline-flex mt-3 px-3 py-1 rounded-full text-xs font-medium ${situacaoPrazoProducao.classe}`}
+  >
+    {situacaoPrazoProducao.texto}
+  </span>
+)}
+      </div>
+
+    </div>
+  </div>
+)}
 
           <div className="border rounded-2xl p-5">
             <h3 className="font-bold text-gray-800 mb-4">
