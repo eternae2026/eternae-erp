@@ -4,6 +4,7 @@ import PedidoDetalhesModal from '../../components/PedidoDetalhesModal'
 import Sidebar from '../../components/Sidebar'
 import { supabase } from '../../lib/supabase'
 import PrazoProducaoModal from '../../components/PrazoProducaoModal'
+import CancelarPedidoModal from '../../components/CancelarPedidoModal'
 
 export default function Pedidos() {
   const [pedidos, setPedidos] = useState([])
@@ -54,6 +55,8 @@ const [pedidoPrazo, setPedidoPrazo] =
       nome
     )
   `
+const [openCancelarPedido, setOpenCancelarPedido] = useState(false)
+const [pedidoParaCancelar, setPedidoParaCancelar] = useState(null)
 
   async function carregarPedidos() {
     const { data, error } = await supabase
@@ -694,6 +697,99 @@ async function confirmarPrazoProducao(prazoDias) {
   )
 }
 
+async function confirmarCancelamentoPedido(motivo) {
+  if (!pedidoParaCancelar) return
+
+  const etapaAtual = etapaPedido(pedidoParaCancelar)
+
+  const etapasPermitidas = [
+    'Aguardando Pagamento',
+    'Arte',
+    'Aguardando Aprovação'
+  ]
+
+  if (!etapasPermitidas.includes(etapaAtual)) {
+    alert(
+      'Este pedido não pode mais ser cancelado por este fluxo.'
+    )
+    return
+  }
+
+  const dataCancelamento = new Date().toISOString()
+
+  const { error: erroPedido } = await supabase
+    .from('pedidos')
+    .update({
+      status: 'Cancelado',
+      etapa_producao: 'Cancelado',
+      motivo_cancelamento: motivo,
+      data_cancelamento: dataCancelamento
+    })
+    .eq('id', pedidoParaCancelar.id)
+
+  if (erroPedido) {
+    console.log(
+      'Erro ao cancelar pedido:',
+      erroPedido
+    )
+
+    alert('Erro ao cancelar o pedido.')
+    return
+  }
+
+  const { error: erroFinanceiro } = await supabase
+    .from('financeiro')
+    .update({
+      status: 'Cancelado'
+    })
+    .eq('pedido_id', pedidoParaCancelar.id)
+    .eq('status', 'Pendente')
+
+  if (erroFinanceiro) {
+    console.log(
+      'Erro ao cancelar cobrança:',
+      erroFinanceiro
+    )
+
+    alert(
+      'O pedido foi cancelado, mas houve erro ao cancelar a cobrança.'
+    )
+    return
+  }
+
+  const { error: erroTimeline } = await supabase
+    .from('pedido_timeline')
+    .insert([
+      {
+        pedido_id: pedidoParaCancelar.id,
+        titulo: 'Pedido cancelado',
+        descricao: `Motivo: ${motivo}`,
+        tipo: 'erro'
+      }
+    ])
+
+  if (erroTimeline) {
+    console.log(
+      'Erro ao registrar cancelamento na timeline:',
+      erroTimeline
+    )
+
+    alert(
+      'O pedido foi cancelado, mas houve erro ao registrar o histórico.'
+    )
+  }
+
+  setOpenCancelarPedido(false)
+  setPedidoParaCancelar(null)
+
+  setOpenDetalhes(false)
+  setPedidoSelecionado(null)
+
+  await carregarPedidos()
+
+  alert('Pedido cancelado com sucesso.')
+}
+
   function voltarPedido(pedido) {
     const etapaAtual = etapaPedido(pedido)
 
@@ -1195,6 +1291,22 @@ async function confirmarPrazoProducao(prazoDias) {
     setOpenDetalhes(false)
     setPedidoSelecionado(null)
   }}
+  onCancelar={() => {
+    if (!pedidoSelecionado) return
+
+    setPedidoParaCancelar(pedidoSelecionado)
+    setOpenCancelarPedido(true)
+  }}
+/>
+
+<CancelarPedidoModal
+  open={openCancelarPedido}
+  onClose={() => {
+    setOpenCancelarPedido(false)
+    setPedidoParaCancelar(null)
+  }}
+  pedido={pedidoParaCancelar}
+  onConfirmar={confirmarCancelamentoPedido}
 />
 
 <PrazoProducaoModal

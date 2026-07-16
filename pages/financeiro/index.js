@@ -9,7 +9,7 @@ import { supabase } from '../../lib/supabase'
 
 export default function Financeiro() {
   const [lancamentos, setLancamentos] = useState([])
-  const [saidas, setSaidas] = useState([])
+const [movimentacoes, setMovimentacoes] = useState([])
 
   const [openModal, setOpenModal] = useState(false)
   const [openSaidaModal, setOpenSaidaModal] = useState(false)
@@ -44,24 +44,27 @@ export default function Financeiro() {
     setLancamentos(data || [])
   }
 
-  async function carregarSaidas() {
-    const { data, error } = await supabase
-      .from('financeiro_saidas')
-      .select('*')
-      .order('data_saida', { ascending: false })
+  async function carregarMovimentacoes() {
+  const { data, error } = await supabase
+    .from('movimentacoes_financeiras')
+    .select('*')
+    .order('data_movimento', { ascending: false })
 
-    if (error) {
-      console.log('Erro ao carregar saídas:', error)
-      return
-    }
-
-    setSaidas(data || [])
+  if (error) {
+    console.log(
+      'Erro ao carregar movimentações:',
+      error
+    )
+    return
   }
 
+  setMovimentacoes(data || [])
+}
+
   useEffect(() => {
-    carregarFinanceiro()
-    carregarSaidas()
-  }, [])
+  carregarFinanceiro()
+  carregarMovimentacoes()
+}, [])
 
   function formatarMoeda(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
@@ -112,7 +115,9 @@ export default function Financeiro() {
   }
 
   async function confirmarRecebimento(dados) {
-  const pedidoId = lancamentoSelecionado?.pedido_id
+  if (!lancamentoSelecionado) return
+
+  const pedidoId = lancamentoSelecionado.pedido_id
 
   const { data, error } = await supabase
     .from('financeiro')
@@ -134,6 +139,8 @@ export default function Financeiro() {
     return
   }
 
+  const lancamentoAtualizado = data?.[0]
+
   if (pedidoId) {
     const { error: erroPedido } = await supabase
       .from('pedidos')
@@ -143,10 +150,15 @@ export default function Financeiro() {
       .eq('id', pedidoId)
 
     if (erroPedido) {
-      console.log('Erro ao avançar pedido para Arte:', erroPedido)
-      alert(
-        'Pagamento recebido, mas houve erro ao avançar o pedido para Arte.'
+      console.log(
+        'Erro ao avançar pedido para Arte:',
+        erroPedido
       )
+
+      alert(
+        'Pagamento recebido, mas houve erro ao encaminhar o pedido para Arte.'
+      )
+
       return
     }
 
@@ -167,16 +179,59 @@ export default function Financeiro() {
         'Erro ao registrar pagamento na timeline:',
         erroTimeline
       )
+
       alert(
-        'Pagamento recebido e pedido avançado, mas houve erro ao registrar o evento na timeline.'
+        'Pagamento recebido e pedido encaminhado para Arte, mas houve erro ao registrar o evento na timeline.'
       )
+
+      return
+    }
+
+    const { error: erroMovimentacao } = await supabase
+      .from('movimentacoes_financeiras')
+      .insert([
+        {
+          tipo: 'Entrada',
+          categoria: 'Venda',
+          descricao: `Venda para ${
+            lancamentoAtualizado?.clientes?.nome ||
+            lancamentoSelecionado.clientes?.nome ||
+            'Cliente'
+          }`,
+          valor: Number(
+            lancamentoSelecionado.valor || 0
+          ),
+          forma_pagamento:
+            dados.forma_pagamento ||
+            lancamentoSelecionado.forma_pagamento ||
+            null,
+          data_movimento:
+            dados.data_pagamento ||
+            new Date().toISOString().slice(0, 10),
+          pedido_id: pedidoId,
+          observacoes: dados.observacoes || null
+        }
+      ])
+
+    if (erroMovimentacao) {
+      console.log(
+        'Erro ao registrar movimentação financeira:',
+        erroMovimentacao
+      )
+
+      alert(
+        'O pagamento foi confirmado, mas houve erro ao registrar a entrada no fluxo de caixa.'
+      )
+
       return
     }
   }
 
   setLancamentos(
     lancamentos.map(item =>
-      item.id === lancamentoSelecionado.id ? data[0] : item
+      item.id === lancamentoSelecionado.id
+        ? lancamentoAtualizado
+        : item
     )
   )
 
@@ -184,51 +239,60 @@ export default function Financeiro() {
   setLancamentoSelecionado(null)
 
   alert(
-    'Pagamento confirmado e pedido encaminhado para Arte!'
+    'Pagamento confirmado, pedido encaminhado para Arte e entrada registrada no fluxo de caixa!'
   )
 }
 
   async function salvarSaida(dados) {
-    const { error } = await supabase
-      .from('financeiro_saidas')
-      .insert([dados])
+  const { error } = await supabase
+    .from('movimentacoes_financeiras')
+    .insert([
+      {
+        tipo: 'Saída',
+        categoria: dados.categoria || 'Outros',
+        descricao: dados.descricao,
+        valor: Number(dados.valor || 0),
+        forma_pagamento:
+          dados.forma_pagamento || null,
+        data_movimento:
+          dados.data_saida ||
+          new Date().toISOString().slice(0, 10),
+        observacoes: dados.observacoes || null
+      }
+    ])
 
-    if (error) {
-      console.log('Erro ao salvar saída:', error)
-      alert('Erro ao salvar saída financeira.')
-      return false
-    }
+  if (error) {
+    console.log(
+      'Erro ao salvar saída financeira:',
+      error
+    )
 
-    await carregarSaidas()
-    setOpenSaidaModal(false)
-
-    return true
+    alert('Erro ao salvar saída financeira.')
+    return false
   }
 
-  const movimentos = [
-    ...lancamentos.map(item => ({
-      id: `entrada-${item.id}`,
-      tipo: 'Entrada',
-      data: item.data_pagamento || item.created_at,
-      descricao: item.clientes?.nome || 'Cliente',
-      detalhe: `Pedido #${item.pedido_id?.slice(0, 8) || '-'}`,
-      valor: Number(item.valor || 0),
-      status: item.status,
-      forma: item.forma_pagamento || '-',
-      origem: item
-    })),
-    ...saidas.map(item => ({
-      id: `saida-${item.id}`,
-      tipo: 'Saída',
-      data: item.data_saida,
-      descricao: item.descricao,
-      detalhe: item.categoria,
-      valor: Number(item.valor || 0),
-      status: 'Pago',
-      forma: '-',
-      origem: item
-    }))
-  ].sort((a, b) => new Date(b.data) - new Date(a.data))
+  await carregarMovimentacoes()
+  setOpenSaidaModal(false)
+
+  return true
+}
+
+  const movimentos = movimentacoes
+  .map(item => ({
+    id: item.id,
+    tipo: item.tipo,
+    data: item.data_movimento || item.created_at,
+    descricao: item.descricao || '-',
+    detalhe: item.categoria || '-',
+    valor: Number(item.valor || 0),
+    status:
+      item.tipo === 'Entrada'
+        ? 'Recebido'
+        : 'Pago',
+    forma: item.forma_pagamento || '-',
+    origem: item
+  }))
+  .sort((a, b) => new Date(b.data) - new Date(a.data))
 
   const movimentosFiltrados = movimentos.filter(item => {
     let periodoValido = true
@@ -274,12 +338,24 @@ export default function Financeiro() {
     return total + Number(item.valor || 0)
   }, 0)
 
-  const recebidoTotal = lancamentos
-    .filter(item => item.status === 'Recebido')
-    .reduce((total, item) => total + Number(item.valor || 0), 0)
+  const recebidoTotal = movimentacoes
+  .filter(item => item.tipo === 'Entrada')
+  .reduce(
+    (total, item) =>
+      total + Number(item.valor || 0),
+    0
+  )
 
-  const saidasTotal = saidas
-    .reduce((total, item) => total + Number(item.valor || 0), 0)
+const saidasTotal = movimentacoes
+  .filter(item => item.tipo === 'Saída')
+  .reduce(
+    (total, item) =>
+      total + Number(item.valor || 0),
+    0
+  )
+
+  const saldoAcumulado =
+  recebidoTotal - saidasTotal
 
   return (
     <div className="flex min-h-screen bg-gray-100">
@@ -344,62 +420,68 @@ export default function Financeiro() {
           </div>
 
           <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Entradas</p>
+            <p className="text-gray-500">Receitas do período</p>
 
             <h2 className="text-2xl font-bold text-green-600 mt-2">
               {formatarMoeda(entradasFiltradas)}
             </h2>
 
             <p className="text-sm text-gray-500 mt-2">
-              Pagamentos recebidos no filtro
-            </p>
+  Entradas recebidas no período filtrado
+</p>
           </div>
 
           <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Saídas</p>
+            <p className="text-gray-500">Despesas do período</p>
 
             <h2 className="text-2xl font-bold text-red-600 mt-2">
               {formatarMoeda(saidasFiltradas)}
             </h2>
 
             <p className="text-sm text-gray-500 mt-2">
-              Despesas no filtro
-            </p>
+  Saídas registradas no período filtrado
+</p>
           </div>
 
           <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Saldo</p>
+  <p className="text-gray-500">
+    Resultado do período
+  </p>
 
-            <h2 className={`text-2xl font-bold mt-2 ${
-              saldoFiltrado >= 0 ? 'text-green-700' : 'text-red-600'
-            }`}>
-              {formatarMoeda(saldoFiltrado)}
-            </h2>
+  <h2 className={`text-2xl font-bold mt-2 ${
+    saldoFiltrado >= 0
+      ? 'text-green-700'
+      : 'text-red-600'
+  }`}>
+    {formatarMoeda(saldoFiltrado)}
+  </h2>
 
-            <p className="text-sm text-gray-500 mt-2">
-              Entradas - saídas
-            </p>
-          </div>
+  <p className="text-sm text-gray-500 mt-2">
+    Receitas - despesas do período
+  </p>
+</div>
 
         </div>
 
-        <div className="grid grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Recebido total</p>
+        <div className="grid grid-cols-1 mb-8">
+  <div className="bg-white rounded-2xl p-6 shadow-sm">
+    <p className="text-gray-500">
+      Saldo acumulado
+    </p>
 
-            <h2 className="text-2xl font-bold text-gray-800 mt-2">
-              {formatarMoeda(recebidoTotal)}
-            </h2>
-          </div>
+    <h2 className={`text-2xl font-bold mt-2 ${
+      saldoAcumulado >= 0
+        ? 'text-green-700'
+        : 'text-red-600'
+    }`}>
+      {formatarMoeda(saldoAcumulado)}
+    </h2>
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Saídas totais</p>
-
-            <h2 className="text-2xl font-bold text-gray-800 mt-2">
-              {formatarMoeda(saidasTotal)}
-            </h2>
-          </div>
-        </div>
+    <p className="text-sm text-gray-500 mt-2">
+      Total de entradas menos o total de saídas
+    </p>
+  </div>
+</div>
 
         <div className="bg-white rounded-2xl p-4 shadow-sm mb-6 flex gap-4">
           <select

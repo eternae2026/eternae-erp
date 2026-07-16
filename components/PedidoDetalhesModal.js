@@ -2,9 +2,21 @@ export default function PedidoDetalhesModal({
   open,
   onClose,
   pedido,
-  onAvancar
+  onAvancar,
+  onCancelar
 }) {
   if (!open || !pedido) return null
+
+  const etapasCancelaveis = [
+  'Aguardando Pagamento',
+  'Arte',
+  'Aguardando Aprovação'
+]
+
+const podeCancelarPedido =
+  etapasCancelaveis.includes(
+    pedido.etapa_producao || 'Aguardando Pagamento'
+  )
 
   const itens = pedido.orcamentos?.orcamento_itens || []
 
@@ -171,7 +183,10 @@ const etapasStepper = [
 
 const etapaAtual = pedido.etapa_producao || 'Aguardando Pagamento'
 
-const indiceEtapaAtual = etapasStepper.indexOf(etapaAtual)
+const indiceEtapaAtual =
+  etapaAtual === 'Cancelado'
+    ? -1
+    : etapasStepper.indexOf(etapaAtual)
 
   return (
     <div className="fixed inset-0 z-50">
@@ -202,7 +217,8 @@ const indiceEtapaAtual = etapasStepper.indexOf(etapaAtual)
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-
+{pedido.etapa_producao !== 'Cancelado' && (
+  
   <div className="border rounded-2xl p-5 mb-6">
     <h3 className="font-bold text-gray-800 mb-5">
       Progresso do pedido
@@ -274,6 +290,7 @@ const indiceEtapaAtual = etapasStepper.indexOf(etapaAtual)
       })}
     </div>
   </div>
+  )}
 
   <div className="grid grid-cols-2 gap-4 mb-6">
             <div className="bg-gray-50 rounded-xl p-4">
@@ -372,6 +389,40 @@ const indiceEtapaAtual = etapasStepper.indexOf(etapaAtual)
   </span>
 </div>
           </div>
+
+{pedido.etapa_producao === 'Cancelado' && (
+  <div className="bg-red-50 border border-red-100 rounded-2xl p-5 mb-6">
+    <h3 className="font-bold text-red-800 text-lg mb-4">
+      ❌ Pedido cancelado
+    </h3>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="bg-white rounded-xl p-4">
+        <p className="text-sm text-gray-500">
+          Motivo do cancelamento
+        </p>
+
+        <p className="font-semibold text-gray-800 mt-2">
+          {pedido.motivo_cancelamento || '-'}
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl p-4">
+        <p className="text-sm text-gray-500">
+          Data do cancelamento
+        </p>
+
+        <p className="font-semibold text-gray-800 mt-2">
+          {pedido.data_cancelamento
+            ? new Date(
+                pedido.data_cancelamento
+              ).toLocaleString('pt-BR')
+            : '-'}
+        </p>
+      </div>
+    </div>
+  </div>
+)}
 
 {pedido.etapa_producao === 'Produção' && (
   <div className="border rounded-2xl p-5 mb-6 bg-purple-50">
@@ -638,15 +689,27 @@ const indiceEtapaAtual = etapasStepper.indexOf(etapaAtual)
 
     )}
 
-        <div className="border-t px-6 py-4 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="bg-gray-900 text-white px-6 py-3 rounded-xl hover:bg-gray-800 transition"
-          >
-            Fechar
-          </button>
-        </div>
+        <div className="border-t px-6 py-4 flex items-center justify-between gap-3">
+  <div>
+    {podeCancelarPedido && (
+      <button
+        type="button"
+        onClick={onCancelar}
+        className="bg-red-50 text-red-700 border border-red-100 px-5 py-3 rounded-xl hover:bg-red-100 transition"
+      >
+        Cancelar pedido
+      </button>
+    )}
+  </div>
+
+  <button
+    type="button"
+    onClick={onClose}
+    className="bg-gray-900 text-white px-6 py-3 rounded-xl hover:bg-gray-800 transition"
+  >
+    Fechar
+  </button>
+</div>
       </aside>
     </div>
   )
