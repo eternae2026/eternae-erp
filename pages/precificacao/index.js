@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
+import PrecificacaoDrawer from '../../components/PrecificacaoDrawer'
 import { supabase } from '../../lib/supabase'
 
 export default function Precificacao() {
@@ -9,6 +10,11 @@ export default function Precificacao() {
   const [produtoSelecionado, setProdutoSelecionado] = useState(null)
   const [composicao, setComposicao] = useState([])
   const [precoFinal, setPrecoFinal] = useState('')
+  const [drawerAberto, setDrawerAberto] = useState(false)
+  const [busca, setBusca] = useState('')
+  const [carregando, setCarregando] = useState(true)
+  const [modoNovoCadastro, setModoNovoCadastro] =
+  useState(false)
 
   async function carregarConfiguracao() {
     const { data, error } = await supabase
@@ -40,6 +46,11 @@ export default function Precificacao() {
   }
 
   async function carregarComposicao(produtoId) {
+    if (!produtoId) {
+      setComposicao([])
+      return
+    }
+
     const { data, error } = await supabase
       .from('produto_composicao')
       .select(`
@@ -59,9 +70,19 @@ export default function Precificacao() {
     setComposicao(data || [])
   }
 
+  async function carregarDados() {
+    setCarregando(true)
+
+    await Promise.all([
+      carregarConfiguracao(),
+      carregarProdutos()
+    ])
+
+    setCarregando(false)
+  }
+
   useEffect(() => {
-    carregarConfiguracao()
-    carregarProdutos()
+    carregarDados()
   }, [])
 
   useEffect(() => {
@@ -72,12 +93,26 @@ export default function Precificacao() {
       return
     }
 
-    const produto = produtos.find(item => item.id === produtoSelecionadoId)
+    const produto = produtos.find(
+      item => String(item.id) === String(produtoSelecionadoId)
+    )
 
     setProdutoSelecionado(produto || null)
-    setPrecoFinal(produto?.preco_final || '')
+    setPrecoFinal(produto?.preco_final || produto?.preco || '')
     carregarComposicao(produtoSelecionadoId)
   }, [produtoSelecionadoId, produtos])
+
+  const produtosFiltrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase()
+
+    if (!termo) {
+      return produtos
+    }
+
+    return produtos.filter(produto =>
+      produto.nome?.toLowerCase().includes(termo)
+    )
+  }, [produtos, busca])
 
   function formatarMoeda(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
@@ -92,163 +127,72 @@ export default function Precificacao() {
     })
   }
 
-  function custosFixosTotais() {
-    if (!configuracao) return 0
+  function abrirPrecificacao(produto) {
+    setProdutoSelecionadoId(produto.id)
+    setProdutoSelecionado(produto)
+    setPrecoFinal(produto.preco_final || produto.preco || '')
+    setDrawerAberto(true)
+  }
 
-    return (
-      Number(configuracao.energia || 0) +
-      Number(configuracao.internet || 0) +
-      Number(configuracao.canva || 0) +
-      Number(configuracao.dominio || 0) +
-      Number(configuracao.outros_custos || 0)
+  function abrirNovaPrecificacao() {
+  setProdutoSelecionado(null)
+  setProdutoSelecionadoId('')
+  setComposicao([])
+  setPrecoFinal('')
+  setModoNovoCadastro(true)
+  setDrawerAberto(true)
+  }
+
+  function fecharDrawer() {
+  setDrawerAberto(false)
+  setModoNovoCadastro(false)
+}
+
+  function atualizarProdutoPrecificado(produtoAtualizado) {
+  setProdutos(produtosAtuais =>
+    produtosAtuais.map(produto =>
+      String(produto.id) === String(produtoAtualizado.id)
+        ? produtoAtualizado
+        : produto
     )
-  }
+  )
 
-  function horasMensais() {
-    if (!configuracao) return 0
+  setProdutoSelecionado(produtoAtualizado)
 
-    return (
-      Number(configuracao.horas_por_dia || 0) *
-      Number(configuracao.dias_por_semana || 0) *
-      4.33
-    )
-  }
+  setPrecoFinal(
+    produtoAtualizado.preco_final ||
+    produtoAtualizado.preco ||
+    ''
+  )
+}
 
-  function valorHora() {
-    const horas = horasMensais()
-    if (horas <= 0) return 0
-
-    return Number(configuracao?.pro_labore_desejado || 0) / horas
-  }
-
-  function custoFixoPorHora() {
-    const horas = horasMensais()
-    if (horas <= 0) return 0
-
-    return custosFixosTotais() / horas
-  }
-
-  function metaMinima() {
-    if (!configuracao) return 0
-
-    return Number(configuracao.pro_labore_desejado || 0) + custosFixosTotais()
-  }
-
-  function metaIdeal() {
-    if (!configuracao) return 0
-
-    const margem = Number(configuracao.margem_padrao || 0)
-
-    return metaMinima() * (1 + margem / 100)
-  }
-
-  function custoInsumos() {
-    return composicao.reduce((total, item) => {
-      const custoUnitario = Number(item.estoque?.custo_unitario || 0)
-      const quantidade = Number(item.quantidade || 0)
-
-      return total + custoUnitario * quantidade
-    }, 0)
-  }
-
-  function horasProduto() {
-    return Number(produtoSelecionado?.tempo_producao || 0) / 60
-  }
-
-  function custoMaoDeObra() {
-    return horasProduto() * valorHora()
-  }
-
-  function custoFixoProduto() {
-    return horasProduto() * custoFixoPorHora()
-  }
-
-  function custoTotalProduto() {
-    return custoInsumos() + custoMaoDeObra() + custoFixoProduto()
-  }
-
-  function margemProduto() {
+  function margemDoProduto(produto) {
     return Number(
-      produtoSelecionado?.margem_lucro ||
+      produto?.margem_lucro ||
       configuracao?.margem_padrao ||
       0
     )
   }
 
-  function precoSugerido() {
-    const margem = margemProduto() / 100
-
-    if (margem >= 1) return 0
-
-    return custoTotalProduto() / (1 - margem)
+  function produtoEstaPrecificado(produto) {
+    return Number(produto?.preco_final || produto?.preco || 0) > 0
   }
 
-function taxaCartao() {
-  return Number(configuracao?.taxa_cartao || 0) / 100
-}
+  const totalPrecificados = produtos.filter(
+    produto => produtoEstaPrecificado(produto)
+  ).length
 
-function precoCartao() {
-  const taxa = taxaCartao()
-  const precoPix = precoSugerido()
+  const totalNaoPrecificados = produtos.length - totalPrecificados
 
-  if (taxa >= 1) return 0
+  const precoMedio = produtos.length > 0
+    ? produtos.reduce(
+        (total, produto) =>
+          total + Number(produto.preco_final || produto.preco || 0),
+        0
+      ) / produtos.length
+    : 0
 
-  return precoPix / (1 - taxa)
-}
-
-function descontoPixPercentual() {
-  const cartao = precoCartao()
-  const pix = precoSugerido()
-
-  if (cartao <= 0) return 0
-
-  return ((cartao - pix) / cartao) * 100
-}
-
-function diferencaPixCartao() {
-  return precoCartao() - precoSugerido()
-}
-
-  function lucroSugerido() {
-    return precoSugerido() - custoTotalProduto()
-  }
-
-  function margemReal(valorVenda) {
-    const venda = Number(valorVenda || 0)
-    if (venda <= 0) return 0
-
-    return ((venda - custoTotalProduto()) / venda) * 100
-  }
-
-  async function salvarPrecoFinal() {
-    if (!produtoSelecionado) return
-
-    const { data, error } = await supabase
-      .from('produtos')
-      .update({
-        preco_final: Number(precoFinal || 0),
-        preco: Number(precoFinal || 0)
-     })
-      .eq('id', produtoSelecionado.id)
-      .select()
-
-    if (error) {
-      console.log('Erro ao salvar preço final:', error)
-      alert('Erro ao salvar preço final.')
-      return
-    }
-
-    setProdutos(
-      produtos.map(produto =>
-        produto.id === produtoSelecionado.id ? data[0] : produto
-      )
-    )
-
-    setProdutoSelecionado(data[0])
-    alert('Preço final salvo!')
-  }
-
-  if (!configuracao) {
+  if (carregando) {
     return (
       <div className="flex min-h-screen bg-gray-100">
         <Sidebar />
@@ -266,302 +210,380 @@ function diferencaPixCartao() {
     <div className="flex min-h-screen bg-gray-100">
       <Sidebar />
 
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 md:p-8 overflow-x-hidden">
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">
-            Precificação Inteligente
-          </h1>
+        {/* Cabeçalho */}
+        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-8">
 
-          <p className="text-gray-500">
-            Entenda seus custos, valor de hora, metas e preço ideal de venda.
-          </p>
-        </div>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800">
+              Precificação
+            </h1>
 
-        <div className="grid grid-cols-4 gap-6 mb-8">
-
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Pró-labore desejado</p>
-            <h2 className="text-2xl font-bold text-gray-800 mt-2">
-              {formatarMoeda(configuracao.pro_labore_desejado)}
-            </h2>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Custos fixos</p>
-            <h2 className="text-2xl font-bold text-gray-800 mt-2">
-              {formatarMoeda(custosFixosTotais())}
-            </h2>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Horas mensais</p>
-            <h2 className="text-2xl font-bold text-gray-800 mt-2">
-              {formatarNumero(horasMensais())}h
-            </h2>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Valor da sua hora</p>
-            <h2 className="text-2xl font-bold text-green-700 mt-2">
-              {formatarMoeda(valorHora())}
-            </h2>
-          </div>
-
-        </div>
-
-        <div className="grid grid-cols-2 gap-6 mb-8">
-
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Meta mínima mensal</p>
-            <h2 className="text-3xl font-bold text-yellow-700 mt-2">
-              {formatarMoeda(metaMinima())}
-            </h2>
-            <p className="text-sm text-gray-500 mt-3">
-              Valor necessário para cobrir custos fixos e pró-labore.
+            <p className="text-gray-500 mt-1">
+              Consulte e gerencie a formação de preço dos produtos da Eternaê.
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-gray-500">Meta ideal mensal</p>
-            <h2 className="text-3xl font-bold text-green-700 mt-2">
-              {formatarMoeda(metaIdeal())}
-            </h2>
-            <p className="text-sm text-gray-500 mt-3">
-              Meta mínima acrescida da margem padrão.
+          <div className="flex flex-wrap gap-3">
+
+            <button
+              type="button"
+              className="
+                border border-gray-300
+                bg-white
+                text-gray-700
+                px-5 py-3
+                rounded-xl
+                font-medium
+                hover:bg-gray-50
+                transition
+              "
+            >
+              Configurações
+            </button>
+
+            <button
+                type="button"
+                onClick={abrirNovaPrecificacao}
+                className="
+                bg-gray-900
+                text-white
+                px-5 py-3
+                rounded-xl
+                font-medium
+                hover:bg-gray-800
+                transition
+              "
+            >
+              + Nova precificação
+            </button>
+
+          </div>
+        </div>
+
+        {/* Indicadores */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+            <p className="text-sm text-gray-500">
+              Produtos cadastrados
+            </p>
+
+            <p className="text-2xl font-bold text-gray-800 mt-2">
+              {produtos.length}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+            <p className="text-sm text-gray-500">
+              Produtos precificados
+            </p>
+
+            <p className="text-2xl font-bold text-green-700 mt-2">
+              {totalPrecificados}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+            <p className="text-sm text-gray-500">
+              Aguardando precificação
+            </p>
+
+            <p className="text-2xl font-bold text-amber-700 mt-2">
+              {totalNaoPrecificados}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+            <p className="text-sm text-gray-500">
+              Preço médio cadastrado
+            </p>
+
+            <p className="text-2xl font-bold text-gray-800 mt-2">
+              {formatarMoeda(precoMedio)}
             </p>
           </div>
 
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-8">
+        {/* Lista de produtos */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
 
-          <h2 className="text-xl font-bold text-gray-800 mb-4">
-            Simulador de Precificação
-          </h2>
+          <div className="p-5 border-b border-gray-100">
 
-          <select
-            value={produtoSelecionadoId}
-            onChange={(e) => setProdutoSelecionadoId(e.target.value)}
-            className="w-full border rounded-xl px-4 py-3 mb-6"
-          >
-            <option value="">Selecione um produto</option>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
 
-            {produtos.map(produto => (
-              <option
-                key={produto.id}
-                value={produto.id}
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">
+                  Produtos
+                </h2>
+
+                <p className="text-sm text-gray-500 mt-1">
+                  Selecione um produto para consultar ou editar sua precificação.
+                </p>
+              </div>
+
+              <div className="w-full lg:w-80">
+                <input
+                  type="text"
+                  value={busca}
+                  onChange={event => setBusca(event.target.value)}
+                  placeholder="Buscar produto..."
+                  className="
+                    w-full
+                    border border-gray-300
+                    rounded-xl
+                    px-4 py-3
+                    outline-none
+                    focus:ring-2
+                    focus:ring-gray-200
+                    focus:border-gray-400
+                  "
+                />
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* Área rolável da tabela */}
+<div className="max-h-[360px] overflow-y-auto">
+
+  {/* Cabeçalho da tabela */}
+  <div
+    className="
+      hidden lg:grid
+      lg:grid-cols-12
+      gap-4
+      px-6 py-4
+      bg-gray-50
+      border-b border-gray-100
+      sticky top-0 z-10
+    "
+  >
+    <div className="col-span-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+      Produto
+    </div>
+
+    <div className="col-span-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+      Tempo
+    </div>
+
+    <div className="col-span-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+      Margem
+    </div>
+
+    <div className="col-span-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+      Preço final
+    </div>
+
+    <div className="col-span-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">
+      Ações
+    </div>
+  </div>
+
+  {/* Produtos */}
+  <div className="divide-y divide-gray-100">
+
+    {produtosFiltrados.map(produto => {
+      const preco = Number(
+        produto.preco_final ||
+        produto.preco ||
+        0
+      )
+
+      const precificado = preco > 0
+
+      return (
+        <div
+          key={produto.id}
+          className="
+            grid grid-cols-1
+            lg:grid-cols-12
+            gap-4
+            px-6 py-5
+            items-center
+            hover:bg-gray-50
+            transition
+          "
+        >
+          {/* Produto */}
+          <div className="lg:col-span-4">
+            <div className="flex items-center gap-3">
+
+              <div
+                className="
+                  h-11 w-11
+                  rounded-xl
+                  bg-gray-100
+                  flex items-center justify-center
+                  text-gray-600
+                  font-bold
+                  shrink-0
+                "
               >
-                {produto.nome}
-              </option>
-            ))}
-          </select>
+                {produto.nome?.charAt(0)?.toUpperCase() || 'P'}
+              </div>
 
-          {!produtoSelecionado ? (
-            <p className="text-gray-500">
-              Selecione um produto para calcular a precificação.
+              <div>
+                <p className="font-semibold text-gray-800">
+                  {produto.nome}
+                </p>
+
+                <div className="mt-1">
+                  {precificado ? (
+                    <span
+                      className="
+                        inline-flex
+                        px-2.5 py-1
+                        rounded-full
+                        bg-green-50
+                        text-green-700
+                        text-xs
+                        font-medium
+                      "
+                    >
+                      Precificado
+                    </span>
+                  ) : (
+                    <span
+                      className="
+                        inline-flex
+                        px-2.5 py-1
+                        rounded-full
+                        bg-amber-50
+                        text-amber-700
+                        text-xs
+                        font-medium
+                      "
+                    >
+                      Aguardando precificação
+                    </span>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Tempo */}
+          <div className="lg:col-span-2">
+            <p className="text-xs text-gray-500 lg:hidden">
+              Tempo de produção
             </p>
-          ) : (
-            <>
-              <div className="grid grid-cols-3 gap-4 mb-6">
 
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-500">Tempo de produção</p>
-                  <p className="font-semibold text-gray-800">
-                    {produtoSelecionado.tempo_producao || 0} min
-                  </p>
-                </div>
+            <p className="text-sm font-medium text-gray-700 mt-1 lg:mt-0">
+              {formatarNumero(produto.tempo_producao || 0)} min
+            </p>
+          </div>
 
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-500">Margem desejada</p>
-                  <p className="font-semibold text-gray-800">
-                    {margemProduto()}%
-                  </p>
-                </div>
+          {/* Margem */}
+          <div className="lg:col-span-2">
+            <p className="text-xs text-gray-500 lg:hidden">
+              Margem desejada
+            </p>
 
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-500">Custo fixo por hora</p>
-                  <p className="font-semibold text-gray-800">
-                    {formatarMoeda(custoFixoPorHora())}
-                  </p>
-                </div>
+            <p className="text-sm font-medium text-gray-700 mt-1 lg:mt-0">
+              {formatarNumero(margemDoProduto(produto))}%
+            </p>
+          </div>
 
-              </div>
+          {/* Preço */}
+          <div className="lg:col-span-2">
+            <p className="text-xs text-gray-500 lg:hidden">
+              Preço final
+            </p>
 
-              <div className="border rounded-2xl overflow-hidden mb-6">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="text-left p-4 text-gray-600">Insumo</th>
-                      <th className="text-left p-4 text-gray-600">Qtd</th>
-                      <th className="text-left p-4 text-gray-600">Custo Unit.</th>
-                      <th className="text-left p-4 text-gray-600">Subtotal</th>
-                    </tr>
-                  </thead>
+            <p
+              className={`
+                text-sm font-bold mt-1 lg:mt-0
+                ${precificado
+                  ? 'text-gray-800'
+                  : 'text-gray-400'
+                }
+              `}
+            >
+              {precificado
+                ? formatarMoeda(preco)
+                : 'Não definido'
+              }
+            </p>
+          </div>
 
-                  <tbody>
-                    {composicao.map(item => {
-                      const custoUnitario = Number(item.estoque?.custo_unitario || 0)
-                      const subtotal = custoUnitario * Number(item.quantidade || 0)
+          {/* Ações */}
+          <div className="lg:col-span-2 lg:text-right">
+            <button
+              type="button"
+              onClick={() => abrirPrecificacao(produto)}
+              className="
+                w-full lg:w-auto
+                border border-gray-300
+                bg-white
+                text-gray-700
+                px-4 py-2.5
+                rounded-xl
+                text-sm
+                font-medium
+                hover:bg-gray-100
+                transition
+              "
+            >
+              Ver precificação
+            </button>
+          </div>
+        </div>
+      )
+    })}
 
-                      return (
-                        <tr key={item.id} className="border-t">
-                          <td className="p-4">
-                            {item.estoque?.nome || '-'}
-                          </td>
+    {produtosFiltrados.length === 0 && (
+      <div className="p-12 text-center">
 
-                          <td className="p-4">
-                            {item.quantidade}
-                          </td>
+        <div
+          className="
+            h-14 w-14
+            rounded-2xl
+            bg-gray-100
+            flex items-center justify-center
+            mx-auto mb-4
+            text-2xl
+          "
+        >
+          🔎
+        </div>
 
-                          <td className="p-4">
-                            {formatarMoeda(custoUnitario)}
-                          </td>
+        <h3 className="font-semibold text-gray-800">
+          Nenhum produto encontrado
+        </h3>
 
-                          <td className="p-4 font-semibold">
-                            {formatarMoeda(subtotal)}
-                          </td>
-                        </tr>
-                      )
-                    })}
+        <p className="text-sm text-gray-500 mt-1">
+          Tente buscar por outro nome.
+        </p>
 
-                    {composicao.length === 0 && (
-                      <tr>
-                        <td colSpan="4" className="p-6 text-center text-gray-500">
-                          Este produto ainda não possui ficha técnica.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+      </div>
+    )}
 
-              <div className="grid grid-cols-3 gap-4 mb-6">
+             </div>
 
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-500">Custo dos insumos</p>
-                  <p className="font-semibold text-gray-800">
-                    {formatarMoeda(custoInsumos())}
-                  </p>
-                </div>
-
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-500">Mão de obra</p>
-                  <p className="font-semibold text-gray-800">
-                    {formatarMoeda(custoMaoDeObra())}
-                  </p>
-                </div>
-
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-sm text-gray-500">Custos fixos aplicados</p>
-                  <p className="font-semibold text-gray-800">
-                    {formatarMoeda(custoFixoProduto())}
-                  </p>
-                </div>
-
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mb-6">
-
-                <div className="bg-gray-900 text-white rounded-xl p-4">
-                  <p className="text-sm text-gray-300">Custo total</p>
-                  <p className="text-xl font-bold">
-                    {formatarMoeda(custoTotalProduto())}
-                  </p>
-                </div>
-
-                <div className="bg-green-50 rounded-xl p-4">
-  <p className="text-sm text-green-700">Preço PIX</p>
-  <p className="text-xl font-bold text-green-700">
-    {formatarMoeda(precoSugerido())}
-  </p>
-</div>
-
-<div className="bg-blue-50 rounded-xl p-4">
-  <p className="text-sm text-blue-700">Preço cartão</p>
-  <p className="text-xl font-bold text-blue-700">
-    {formatarMoeda(precoCartao())}
-  </p>
-</div>
-
-<div className="bg-purple-50 rounded-xl p-4">
-  <p className="text-sm text-purple-700">Desconto PIX</p>
-  <p className="text-xl font-bold text-purple-700">
-    {formatarNumero(descontoPixPercentual())}%
-  </p>
-</div>
-
-                <div className="bg-blue-50 rounded-xl p-4">
-                  <p className="text-sm text-blue-700">Lucro sugerido</p>
-                  <p className="text-xl font-bold text-blue-700">
-                    {formatarMoeda(lucroSugerido())}
-                  </p>
-                </div>
-
-                <div className="bg-purple-50 rounded-xl p-4">
-                  <p className="text-sm text-purple-700">Margem real</p>
-                  <p className="text-xl font-bold text-purple-700">
-                    {formatarNumero(margemReal(precoSugerido()))}%
-                  </p>
-                </div>
-
-              </div>
-
-              <div className="border rounded-2xl p-5">
-
-                <h3 className="font-bold text-gray-800 mb-4">
-                  Preço final
-                </h3>
-
-                <div className="flex gap-4 mb-4">
-                  <input
-                    type="number"
-                    placeholder="Preço final"
-                    value={precoFinal}
-                    onChange={(e) => setPrecoFinal(e.target.value)}
-                    className="border rounded-xl px-4 py-3 flex-1"
-                  />
-
-                  <button
-                    onClick={salvarPrecoFinal}
-                    className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
-                  >
-                    Salvar Preço Final
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-sm text-gray-500">Preço final</p>
-                    <p className="font-semibold text-gray-800">
-                      {formatarMoeda(precoFinal)}
-                    </p>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-sm text-gray-500">Lucro no preço final</p>
-                    <p className="font-semibold text-gray-800">
-                      {formatarMoeda(Number(precoFinal || 0) - custoTotalProduto())}
-                    </p>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-sm text-gray-500">Margem no preço final</p>
-                    <p className="font-semibold text-gray-800">
-                      {formatarNumero(margemReal(precoFinal))}%
-                    </p>
-                  </div>
-
-                </div>
-
-              </div>
-            </>
-          )}
+          </div>
 
         </div>
 
       </main>
+
+      <PrecificacaoDrawer
+  aberto={drawerAberto}
+  onClose={fecharDrawer}
+  produto={produtoSelecionado}
+  configuracao={configuracao}
+  composicao={composicao}
+  precoFinal={precoFinal}
+  setPrecoFinal={setPrecoFinal}
+  onPrecoSalvo={atualizarProdutoPrecificado}
+  modoNovoCadastro={modoNovoCadastro}
+  produtos={produtos}
+/>
+
     </div>
   )
 }
