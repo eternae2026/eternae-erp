@@ -181,6 +181,53 @@ export default function PrecificacaoDrawer({
   }, 0)
 }
 
+function itensFichaTecnica() {
+  return modoEdicao
+    ? insumosEdicao
+    : composicao
+}
+
+function categoriaDoItem(item) {
+  return (
+    item.estoque?.categoria_item ||
+    'producao'
+  )
+}
+
+function custoPorCategoria(categoria) {
+  return itensFichaTecnica()
+    .filter(
+      item =>
+        categoriaDoItem(item) === categoria
+    )
+    .reduce((total, item) => {
+      const custoUnitario = Number(
+        item.estoque?.custo_unitario || 0
+      )
+
+      const quantidade = Number(
+        item.quantidade || 0
+      )
+
+      return (
+        total +
+        custoUnitario * quantidade
+      )
+    }, 0)
+}
+
+function custoProducao() {
+  return custoPorCategoria('producao')
+}
+
+function custoEmbalagens() {
+  return custoPorCategoria('embalagem')
+}
+
+function custoAcessorios() {
+  return custoPorCategoria('acessorio')
+}
+
   function horasProduto() {
   const tempoUtilizado =
     modoEdicao || modoNovoCadastro
@@ -978,13 +1025,13 @@ export default function PrecificacaoDrawer({
                     </h3>
 
                     <p className="text-sm text-gray-500 mt-1">
-                      Insumos consumidos na produção de uma unidade.
+                      Materiais utilizados para produzir e entregar uma unidade.
                     </p>
                   </div>
 
                   <div className="bg-gray-100 rounded-xl px-4 py-2">
                     <p className="text-xs text-gray-500">
-                      Total dos insumos
+                      Total dos materiais
                     </p>
 
                     <p className="font-bold text-gray-800">
@@ -1001,7 +1048,7 @@ export default function PrecificacaoDrawer({
     <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
 
       <p className="text-sm font-medium text-gray-700 mb-4">
-        Adicionar insumo
+        Adicionar item à ficha técnica
       </p>
 
       <div className="flex flex-col lg:flex-row gap-3">
@@ -1021,17 +1068,61 @@ export default function PrecificacaoDrawer({
           "
         >
           <option value="">
-            Selecione um insumo
+            Selecione um item
           </option>
 
-          {estoque.map(item => (
-            <option
-              key={item.id}
-              value={item.id}
-            >
-              {item.nome}
-            </option>
-          ))}
+          <optgroup label="Produção">
+  {estoque
+    .filter(
+      item =>
+        item.categoria_item ===
+        'producao'
+    )
+    .map(item => (
+      <option
+        key={item.id}
+        value={item.id}
+      >
+        {item.nome}
+      </option>
+    ))}
+</optgroup>
+
+<optgroup label="Embalagens">
+  {estoque
+    .filter(
+      item =>
+        item.categoria_item ===
+        'embalagem'
+    )
+    .map(item => (
+      <option
+        key={item.id}
+        value={item.id}
+      >
+        {item.nome}
+      </option>
+    ))}
+</optgroup>
+
+<optgroup label="Acessórios">
+  {estoque
+    .filter(
+      item =>
+        item.categoria_item ===
+        'acessorio'
+    )
+    .map(item => (
+      <option
+        key={item.id}
+        value={item.id}
+      >
+        {item.nome}
+      </option>
+    ))}
+</optgroup>
+
+          
 
         </select>
 
@@ -1082,7 +1173,11 @@ export default function PrecificacaoDrawer({
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        Insumo
+                        Item
+                      </th>
+
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        Tipo
                       </th>
 
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -1124,10 +1219,28 @@ export default function PrecificacaoDrawer({
                         <tr key={item.id}>
 
                           <td className="px-5 py-4">
-                            <p className="font-medium text-gray-800">
-                              {item.estoque?.nome || 'Insumo não identificado'}
-                            </p>
-                          </td>
+  <p className="font-medium text-gray-800">
+    {item.estoque?.nome || 'Item não identificado'}
+  </p>
+</td>
+
+<td className="px-5 py-4">
+  <span
+    className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+      categoriaDoItem(item) === 'embalagem'
+        ? 'bg-amber-50 text-amber-700'
+        : categoriaDoItem(item) === 'acessorio'
+          ? 'bg-violet-50 text-violet-700'
+          : 'bg-blue-50 text-blue-700'
+    }`}
+  >
+    {categoriaDoItem(item) === 'embalagem'
+      ? 'Embalagem'
+      : categoriaDoItem(item) === 'acessorio'
+        ? 'Acessório'
+        : 'Produção'}
+  </span>
+</td>
 
                           <td className="px-5 py-4">
 
@@ -1209,7 +1322,7 @@ export default function PrecificacaoDrawer({
                     ).length === 0 && (
                       <tr>
                         <td
-                          colSpan="5"
+                          colSpan="6"
                           className="px-5 py-10 text-center"
                         >
                           <p className="font-medium text-gray-700">
@@ -1217,16 +1330,62 @@ export default function PrecificacaoDrawer({
                           </p>
 
                           <p className="text-sm text-gray-500 mt-1">
-                            Adicione os insumos utilizados na produção.
+                            Adicione os materiais utilizados na produção, embalagem ou composição do produto.
                           </p>
                         </td>
                       </tr>
-                    )}
+                                        )}
 
                   </tbody>
 
                 </table>
 
+              </div>
+
+              <div className="border-t border-gray-100 p-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                    <p className="text-sm font-medium text-blue-700">
+                      Produção
+                    </p>
+
+                    <p className="text-lg font-bold text-blue-800 mt-2">
+                      {formatarMoeda(custoProducao())}
+                    </p>
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                    <p className="text-sm font-medium text-amber-700">
+                      Embalagens
+                    </p>
+
+                    <p className="text-lg font-bold text-amber-800 mt-2">
+                      {formatarMoeda(custoEmbalagens())}
+                    </p>
+                  </div>
+
+                  <div className="bg-violet-50 border border-violet-100 rounded-xl p-4">
+                    <p className="text-sm font-medium text-violet-700">
+                      Acessórios
+                    </p>
+
+                    <p className="text-lg font-bold text-violet-800 mt-2">
+                      {formatarMoeda(custoAcessorios())}
+                    </p>
+                  </div>
+
+                  <div className="bg-gray-900 rounded-xl p-4">
+                    <p className="text-sm font-medium text-gray-300">
+                      Total dos materiais
+                    </p>
+
+                    <p className="text-lg font-bold text-white mt-2">
+                      {formatarMoeda(custoInsumos())}
+                    </p>
+                  </div>
+
+                </div>
               </div>
 
             </section>
@@ -1240,7 +1399,7 @@ export default function PrecificacaoDrawer({
                 </h3>
 
                 <p className="text-sm text-gray-500 mt-1">
-                  Custo direto e indireto aplicado ao produto?.
+                  Custos diretos e indiretos aplicados ao produto?.
                 </p>
               </div>
 
@@ -1250,7 +1409,7 @@ export default function PrecificacaoDrawer({
 
                   <div className="bg-gray-50 rounded-xl p-4">
                     <p className="text-sm text-gray-500">
-                      Insumos
+                      Materiais
                     </p>
 
                     <p className="text-lg font-bold text-gray-800 mt-2">

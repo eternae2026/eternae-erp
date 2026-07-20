@@ -43,18 +43,25 @@ const [pedidoPrazo, setPedidoPrazo] =
   useState(null)
 
   const orcamentoItensSelect = `
+  id,
+  produto_id,
+  estoque_id,
+  nome_item,
+  tipo_item,
+  kit_id,
+  quantidade,
+  valor_unitario,
+  subtotal,
+  produtos (
+    nome
+  ),
+  estoque (
     id,
-    produto_id,
-    nome_item,
-    tipo_item,
-    kit_id,
-    quantidade,
-    valor_unitario,
-    subtotal,
-    produtos (
-      nome
-    )
-  `
+    nome,
+    categoria_item,
+    custo_unitario
+  )
+`
 const [openCancelarPedido, setOpenCancelarPedido] = useState(false)
 const [pedidoParaCancelar, setPedidoParaCancelar] = useState(null)
 
@@ -218,133 +225,344 @@ const [pedidoParaCancelar, setPedidoParaCancelar] = useState(null)
   }
 
   async function baixarEstoqueDoPedido(pedido) {
-    const itens = pedido.orcamentos?.orcamento_itens || []
+  const itens =
+    pedido.orcamentos?.orcamento_itens || []
 
-    if (itens.length === 0) {
-      alert('Este pedido não possui itens para baixa de estoque.')
+  if (itens.length === 0) {
+    alert(
+      'Este pedido não possui itens para baixa de estoque.'
+    )
+    return false
+  }
+
+  const produtosConsumidos = []
+  const consumoDiretoEstoque = {}
+
+  const itensProduto = itens.filter(
+    item => item.produto_id
+  )
+
+  const itensKit = itens.filter(
+    item => item.kit_id
+  )
+
+  const itensEstoqueDireto = itens.filter(
+    item => item.estoque_id
+  )
+
+  /*
+    Produtos vendidos diretamente:
+    a baixa ocorre pela ficha técnica.
+  */
+  itensProduto.forEach(item => {
+    produtosConsumidos.push({
+      produto_id: item.produto_id,
+      quantidade: Number(
+        item.quantidade || 1
+      )
+    })
+  })
+
+  /*
+    Acessórios e embalagens vendidos
+    diretamente:
+    a baixa ocorre no próprio estoque.
+  */
+  itensEstoqueDireto.forEach(item => {
+    const estoqueId = item.estoque_id
+
+    const quantidadeItem =
+      Number(item.quantidade || 1)
+
+    consumoDiretoEstoque[estoqueId] =
+      Number(
+        consumoDiretoEstoque[estoqueId] ||
+        0
+      ) + quantidadeItem
+  })
+
+  /*
+    Kits:
+    podem conter produtos e também
+    acessórios ou embalagens do estoque.
+  */
+  if (itensKit.length > 0) {
+    const kitIds = itensKit.map(
+      item => item.kit_id
+    )
+
+    const {
+      data: kitItens,
+      error: erroKitItens
+    } = await supabase
+      .from('kit_itens')
+      .select(`
+        id,
+        kit_id,
+        tipo_item,
+        produto_id,
+        estoque_id,
+        quantidade
+      `)
+      .in('kit_id', kitIds)
+
+    if (erroKitItens) {
+      console.log(
+        'Erro ao carregar itens do kit:',
+        erroKitItens
+      )
+
+      alert(
+        'Erro ao carregar itens do kit para baixa de estoque.'
+      )
       return false
     }
 
-    const produtosConsumidos = []
+    itensKit.forEach(itemKitPedido => {
+      const quantidadeKit =
+        Number(itemKitPedido.quantidade || 1)
 
-    const itensProduto = itens.filter(item => item.produto_id)
-    const itensKit = itens.filter(item => item.kit_id)
-
-    itensProduto.forEach(item => {
-      produtosConsumidos.push({
-        produto_id: item.produto_id,
-        quantidade: Number(item.quantidade || 1)
-      })
-    })
-
-    if (itensKit.length > 0) {
-      const kitIds = itensKit.map(item => item.kit_id)
-
-      const { data: kitItens, error: erroKitItens } = await supabase
-        .from('kit_itens')
-        .select('*')
-        .in('kit_id', kitIds)
-
-      if (erroKitItens) {
-        console.log('Erro ao carregar itens do kit:', erroKitItens)
-        alert('Erro ao carregar itens do kit para baixa de estoque.')
-        return false
-      }
-
-      itensKit.forEach(itemKit => {
-        const quantidadeKit = Number(itemKit.quantidade || 1)
-
-        const itensDoKit = (kitItens || []).filter(
-          kitItem => kitItem.kit_id === itemKit.kit_id
+      const itensDoKit =
+        (kitItens || []).filter(
+          kitItem =>
+            kitItem.kit_id ===
+            itemKitPedido.kit_id
         )
 
-        itensDoKit.forEach(kitItem => {
+      itensDoKit.forEach(kitItem => {
+        const quantidadeInterna =
+          Number(kitItem.quantidade || 1) *
+          quantidadeKit
+
+        if (kitItem.produto_id) {
           produtosConsumidos.push({
-            produto_id: kitItem.produto_id,
-            quantidade: Number(kitItem.quantidade || 1) * quantidadeKit
+            produto_id:
+              kitItem.produto_id,
+            quantidade:
+              quantidadeInterna
           })
-        })
+        }
+
+        if (kitItem.estoque_id) {
+          consumoDiretoEstoque[
+            kitItem.estoque_id
+          ] =
+            Number(
+              consumoDiretoEstoque[
+                kitItem.estoque_id
+              ] || 0
+            ) + quantidadeInterna
+        }
       })
-    }
+    })
+  }
 
-    if (produtosConsumidos.length === 0) {
-      alert('Nenhum produto encontrado para baixa de estoque.')
-      return false
-    }
+  /*
+    Produtos:
+    transformar cada produto nos materiais
+    da ficha técnica.
+  */
+  const produtoIds = [
+    ...new Set(
+      produtosConsumidos
+        .map(item => item.produto_id)
+        .filter(Boolean)
+    )
+  ]
 
-    const produtoIds = [...new Set(produtosConsumidos.map(item => item.produto_id))]
+  const consumoTotalEstoque = {
+    ...consumoDiretoEstoque
+  }
 
-    const { data: composicoes, error: erroComposicoes } = await supabase
+  if (produtoIds.length > 0) {
+    const {
+      data: composicoes,
+      error: erroComposicoes
+    } = await supabase
       .from('produto_composicao')
       .select('*')
       .in('produto_id', produtoIds)
 
     if (erroComposicoes) {
-      console.log('Erro ao carregar composição:', erroComposicoes)
-      alert('Erro ao carregar composição dos produtos.')
-      return false
-    }
-
-    if (!composicoes || composicoes.length === 0) {
-      alert('Os produtos deste pedido não possuem composição cadastrada.')
-      return false
-    }
-
-    const consumoPorInsumo = {}
-
-    produtosConsumidos.forEach(produto => {
-      const composicoesProduto = composicoes.filter(
-        composicao => composicao.produto_id === produto.produto_id
+      console.log(
+        'Erro ao carregar composição:',
+        erroComposicoes
       )
 
-      composicoesProduto.forEach(composicao => {
-        const consumo =
-          Number(composicao.quantidade || 0) *
-          Number(produto.quantidade || 1)
-
-        consumoPorInsumo[composicao.insumo_id] =
-          Number(consumoPorInsumo[composicao.insumo_id] || 0) + consumo
-      })
-    })
-
-    const insumoIds = Object.keys(consumoPorInsumo)
-
-    const { data: estoqueAtual, error: erroEstoque } = await supabase
-      .from('estoque')
-      .select('*')
-      .in('id', insumoIds)
-
-    if (erroEstoque) {
-      console.log('Erro ao carregar estoque:', erroEstoque)
-      alert('Erro ao carregar estoque.')
+      alert(
+        'Erro ao carregar composição dos produtos.'
+      )
       return false
     }
 
-    for (const insumoId of insumoIds) {
-      const itemEstoque = estoqueAtual?.find(item => item.id === insumoId)
-
-      if (!itemEstoque) continue
-
-      const novaQuantidade =
-        Number(itemEstoque.quantidade_disponivel || 0) -
-        Number(consumoPorInsumo[insumoId] || 0)
-
-      const { error: erroAtualizarEstoque } = await supabase
-        .from('estoque')
-        .update({
-          quantidade_disponivel: novaQuantidade
-        })
-        .eq('id', insumoId)
-
-      if (erroAtualizarEstoque) {
-        console.log('Erro ao atualizar estoque:', erroAtualizarEstoque)
-        alert('Erro ao atualizar estoque.')
-        return false
-      }
+    if (
+      !composicoes ||
+      composicoes.length === 0
+    ) {
+      alert(
+        'Os produtos deste pedido não possuem composição cadastrada.'
+      )
+      return false
     }
 
-    return true
+    produtosConsumidos.forEach(produto => {
+      const composicoesProduto =
+        composicoes.filter(
+          composicao =>
+            composicao.produto_id ===
+            produto.produto_id
+        )
+
+      composicoesProduto.forEach(
+        composicao => {
+          const consumo =
+            Number(
+              composicao.quantidade || 0
+            ) *
+            Number(
+              produto.quantidade || 1
+            )
+
+          consumoTotalEstoque[
+            composicao.insumo_id
+          ] =
+            Number(
+              consumoTotalEstoque[
+                composicao.insumo_id
+              ] || 0
+            ) + consumo
+        }
+      )
+    })
   }
+
+  const estoqueIds =
+    Object.keys(consumoTotalEstoque)
+
+  if (estoqueIds.length === 0) {
+    alert(
+      'Nenhum item encontrado para baixa de estoque.'
+    )
+    return false
+  }
+
+  const {
+    data: estoqueAtual,
+    error: erroEstoque
+  } = await supabase
+    .from('estoque')
+    .select('*')
+    .in('id', estoqueIds)
+
+  if (erroEstoque) {
+    console.log(
+      'Erro ao carregar estoque:',
+      erroEstoque
+    )
+
+    alert('Erro ao carregar estoque.')
+    return false
+  }
+
+  /*
+    Validar todo o estoque antes de dar baixa.
+    Isso evita baixar alguns itens e falhar
+    no meio da operação.
+  */
+  const itensSemEstoque = []
+
+  for (const estoqueId of estoqueIds) {
+    const itemEstoque =
+      estoqueAtual?.find(
+        item => item.id === estoqueId
+      )
+
+    if (!itemEstoque) {
+      itensSemEstoque.push(
+        'Item não encontrado'
+      )
+      continue
+    }
+
+    const quantidadeDisponivel =
+      Number(
+        itemEstoque
+          .quantidade_disponivel || 0
+      )
+
+    const quantidadeNecessaria =
+      Number(
+        consumoTotalEstoque[
+          estoqueId
+        ] || 0
+      )
+
+    if (
+      quantidadeDisponivel <
+      quantidadeNecessaria
+    ) {
+      itensSemEstoque.push(
+        `${itemEstoque.nome}: disponível ${quantidadeDisponivel}, necessário ${quantidadeNecessaria}`
+      )
+    }
+  }
+
+  if (itensSemEstoque.length > 0) {
+    alert(
+      `Estoque insuficiente:\n\n${itensSemEstoque.join(
+        '\n'
+      )}`
+    )
+    return false
+  }
+
+  /*
+    Baixa efetiva.
+  */
+  for (const estoqueId of estoqueIds) {
+    const itemEstoque =
+      estoqueAtual?.find(
+        item => item.id === estoqueId
+      )
+
+    if (!itemEstoque) continue
+
+    const novaQuantidade =
+      Number(
+        itemEstoque
+          .quantidade_disponivel || 0
+      ) -
+      Number(
+        consumoTotalEstoque[
+          estoqueId
+        ] || 0
+      )
+
+    const {
+      error: erroAtualizarEstoque
+    } = await supabase
+      .from('estoque')
+      .update({
+        quantidade_disponivel:
+          novaQuantidade
+      })
+      .eq('id', estoqueId)
+
+    if (erroAtualizarEstoque) {
+      console.log(
+        'Erro ao atualizar estoque:',
+        erroAtualizarEstoque
+      )
+
+      alert(
+        'Erro ao atualizar estoque.'
+      )
+      return false
+    }
+  }
+
+  return true
+}
 
   async function atualizarEtapaPedido(
   pedido,

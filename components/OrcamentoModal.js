@@ -16,19 +16,22 @@ const [observacoes, setObservacoes] = useState('')
 
 const [validadeDias, setValidadeDias] = useState(7)
   const [itens, setItens] = useState([])
-  const [kits, setKits] = useState([])
+const [kits, setKits] = useState([])
+const [itensVendaveis, setItensVendaveis] = useState([])
 
   const [tipoItem, setTipoItem] = useState('produto')
   const [produtoId, setProdutoId] = useState('')
-  const [kitId, setKitId] = useState('')
-  const [quantidade, setQuantidade] = useState(1)
+const [kitId, setKitId] = useState('')
+const [estoqueId, setEstoqueId] = useState('')
+const [quantidade, setQuantidade] = useState(1)
   const [valorUnitario, setValorUnitario] = useState('')
 
   useEffect(() => {
-    if (open) {
-      carregarKits()
-    }
-  }, [open])
+  if (open) {
+    carregarKits()
+    carregarItensVendaveis()
+  }
+}, [open])
 
   useEffect(() => {
     if (orcamento) {
@@ -74,13 +77,54 @@ setValidadeDias(
 
   if (!open) return null
 
-  function limparSelecaoItem() {
-    setTipoItem('produto')
-    setProdutoId('')
-    setKitId('')
-    setQuantidade(1)
-    setValorUnitario('')
+  async function carregarItensVendaveis() {
+  const { data, error } = await supabase
+    .from('estoque')
+    .select(`
+      id,
+      nome,
+      categoria,
+      categoria_item,
+      vendavel,
+      preco_venda,
+      custo_unitario,
+      quantidade_disponivel,
+      quantidade_reservada,
+      unidade
+    `)
+    .eq('vendavel', true)
+    .in('categoria_item', [
+      'acessorio',
+      'embalagem'
+    ])
+    .order('categoria_item', {
+      ascending: true
+    })
+    .order('nome', {
+      ascending: true
+    })
+
+  if (error) {
+    console.log(
+      'Erro ao carregar itens vendáveis:',
+      error
+    )
+
+    setItensVendaveis([])
+    return
   }
+
+  setItensVendaveis(data || [])
+}
+
+  function limparSelecaoItem() {
+  setTipoItem('produto')
+  setProdutoId('')
+  setKitId('')
+  setEstoqueId('')
+  setQuantidade(1)
+  setValorUnitario('')
+}
 
   function formatarMoeda(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
@@ -97,12 +141,21 @@ setValidadeDias(
     return kits.find(kit => kit.id === kitId)
   }
 
+  function itemVendavelSelecionado() {
+  return itensVendaveis.find(
+    item =>
+      String(item.id) ===
+      String(estoqueId)
+  )
+}
+
   function selecionarTipoItem(tipo) {
-    setTipoItem(tipo)
-    setProdutoId('')
-    setKitId('')
-    setValorUnitario('')
-  }
+  setTipoItem(tipo)
+  setProdutoId('')
+  setKitId('')
+  setEstoqueId('')
+  setValorUnitario('')
+}
 
   function selecionarProduto(id) {
     setProdutoId(id)
@@ -130,61 +183,152 @@ setValidadeDias(
     setValorUnitario(kit.preco_final || 0)
   }
 
-  function adicionarItem() {
-    const quantidadeNumero = Number(quantidade || 1)
-    const valorNumero = Number(valorUnitario || 0)
-    const subtotal = quantidadeNumero * valorNumero
+  function selecionarItemVendavel(id) {
+  setEstoqueId(id)
 
-    if (tipoItem === 'produto') {
-      if (!produtoId) {
-        alert('Selecione um produto.')
-        return
-      }
+  const item = itensVendaveis.find(
+    registro =>
+      String(registro.id) ===
+      String(id)
+  )
 
-      const produto = produtoSelecionado()
-
-      setItens([
-        ...itens,
-        {
-          tipo_item: 'produto',
-          produto_id: produtoId,
-          kit_id: null,
-          nome_item: produto?.nome || 'Produto',
-          produtos: {
-            nome: produto?.nome || 'Produto'
-          },
-          quantidade: quantidadeNumero,
-          valor_unitario: valorNumero,
-          subtotal
-        }
-      ])
-    }
-
-    if (tipoItem === 'kit') {
-      if (!kitId) {
-        alert('Selecione um kit.')
-        return
-      }
-
-      const kit = kitSelecionado()
-
-      setItens([
-        ...itens,
-        {
-          tipo_item: 'kit',
-          produto_id: null,
-          kit_id: kitId,
-          nome_item: kit?.nome || 'Kit',
-          produtos: null,
-          quantidade: quantidadeNumero,
-          valor_unitario: valorNumero,
-          subtotal
-        }
-      ])
-    }
-
-    limparSelecaoItem()
+  if (!item) {
+    setValorUnitario('')
+    return
   }
+
+  setValorUnitario(
+    Number(item.preco_venda || 0)
+  )
+}
+
+  function adicionarItem() {
+  const quantidadeNumero =
+    Number(quantidade || 1)
+
+  const valorNumero =
+    Number(valorUnitario || 0)
+
+  if (quantidadeNumero <= 0) {
+    alert(
+      'Informe uma quantidade maior que zero.'
+    )
+    return
+  }
+
+  if (valorNumero <= 0) {
+    alert(
+      'Informe um valor unitário maior que zero.'
+    )
+    return
+  }
+
+  const subtotal =
+    quantidadeNumero * valorNumero
+
+  if (tipoItem === 'produto') {
+    if (!produtoId) {
+      alert('Selecione um produto.')
+      return
+    }
+
+    const produto = produtoSelecionado()
+
+    setItens([
+      ...itens,
+      {
+        tipo_item: 'produto',
+        produto_id: produtoId,
+        kit_id: null,
+        estoque_id: null,
+        nome_item:
+          produto?.nome || 'Produto',
+        produtos: {
+          nome:
+            produto?.nome || 'Produto'
+        },
+        estoque: null,
+        quantidade: quantidadeNumero,
+        valor_unitario: valorNumero,
+        subtotal
+      }
+    ])
+  }
+
+  if (tipoItem === 'kit') {
+    if (!kitId) {
+      alert('Selecione um kit.')
+      return
+    }
+
+    const kit = kitSelecionado()
+
+    setItens([
+      ...itens,
+      {
+        tipo_item: 'kit',
+        produto_id: null,
+        kit_id: kitId,
+        estoque_id: null,
+        nome_item:
+          kit?.nome || 'Kit',
+        produtos: null,
+        estoque: null,
+        quantidade: quantidadeNumero,
+        valor_unitario: valorNumero,
+        subtotal
+      }
+    ])
+  }
+
+  if (tipoItem === 'estoque') {
+    if (!estoqueId) {
+      alert(
+        'Selecione um acessório ou embalagem.'
+      )
+      return
+    }
+
+    const item =
+      itemVendavelSelecionado()
+
+    if (!item) {
+      alert(
+        'O item selecionado não foi encontrado.'
+      )
+      return
+    }
+
+    const tipoEstoque =
+      item.categoria_item === 'embalagem'
+        ? 'embalagem'
+        : 'acessorio'
+
+    setItens([
+      ...itens,
+      {
+        tipo_item: tipoEstoque,
+        produto_id: null,
+        kit_id: null,
+        estoque_id: item.id,
+        nome_item:
+          item.nome || 'Item adicional',
+        produtos: null,
+        estoque: {
+          id: item.id,
+          nome: item.nome,
+          categoria_item:
+            item.categoria_item
+        },
+        quantidade: quantidadeNumero,
+        valor_unitario: valorNumero,
+        subtotal
+      }
+    ])
+  }
+
+  limparSelecaoItem()
+}
 
   function removerItem(index) {
     setItens(itens.filter((_, itemIndex) => itemIndex !== index))
@@ -295,13 +439,24 @@ valor_final: calcularTotalCartao(),
           <div className="grid grid-cols-5 gap-4 mb-4">
 
             <select
-              value={tipoItem}
-              onChange={(e) => selecionarTipoItem(e.target.value)}
-              className="border rounded-xl px-4 py-3"
-            >
-              <option value="produto">Produto</option>
-              <option value="kit">Kit</option>
-            </select>
+  value={tipoItem}
+  onChange={(e) =>
+    selecionarTipoItem(e.target.value)
+  }
+  className="border rounded-xl px-4 py-3"
+>
+  <option value="produto">
+    Produto
+  </option>
+
+  <option value="kit">
+    Kit
+  </option>
+
+  <option value="estoque">
+    Acessório ou embalagem
+  </option>
+</select>
 
             {tipoItem === 'produto' && (
               <select
@@ -334,6 +489,64 @@ valor_final: calcularTotalCartao(),
                 ))}
               </select>
             )}
+
+            {tipoItem === 'estoque' && (
+  <select
+    value={estoqueId}
+    onChange={(e) =>
+      selecionarItemVendavel(
+        e.target.value
+      )
+    }
+    className="border rounded-xl px-4 py-3"
+  >
+    <option value="">
+      Selecione um item
+    </option>
+
+    <optgroup label="Acessórios">
+      {itensVendaveis
+        .filter(
+          item =>
+            item.categoria_item ===
+            'acessorio'
+        )
+        .map(item => (
+          <option
+            key={item.id}
+            value={item.id}
+          >
+            {item.nome}
+            {' — '}
+            {formatarMoeda(
+              item.preco_venda
+            )}
+          </option>
+        ))}
+    </optgroup>
+
+    <optgroup label="Embalagens">
+      {itensVendaveis
+        .filter(
+          item =>
+            item.categoria_item ===
+            'embalagem'
+        )
+        .map(item => (
+          <option
+            key={item.id}
+            value={item.id}
+          >
+            {item.nome}
+            {' — '}
+            {formatarMoeda(
+              item.preco_venda
+            )}
+          </option>
+        ))}
+    </optgroup>
+  </select>
+)}
 
             <input
               type="number"
@@ -373,6 +586,18 @@ valor_final: calcularTotalCartao(),
             </p>
           )}
 
+          {tipoItem === 'estoque' &&
+  itemVendavelSelecionado() && (
+    <p className="text-xs text-green-700 mb-4">
+      Preço de venda:
+      {' '}
+      {formatarMoeda(
+        itemVendavelSelecionado()
+          ?.preco_venda
+      )}
+    </p>
+  )}
+
           {itens.length === 0 ? (
             <p className="text-gray-500 text-sm">
               Nenhum item adicionado.
@@ -391,8 +616,20 @@ valor_final: calcularTotalCartao(),
                     </p>
 
                     <p className="text-sm text-gray-500">
-                      {item.tipo_item === 'kit' ? '🎁 Kit' : '🛍️ Produto'} · {item.quantidade} x {formatarMoeda(item.valor_unitario)}
-                    </p>
+  {item.tipo_item === 'kit'
+    ? '🎁 Kit'
+    : item.tipo_item === 'acessorio'
+      ? '🎀 Acessório'
+      : item.tipo_item === 'embalagem'
+        ? '📦 Embalagem'
+        : '🛍️ Produto'}
+  {' · '}
+  {item.quantidade} x
+  {' '}
+  {formatarMoeda(
+    item.valor_unitario
+  )}
+</p>
                   </div>
 
                   <div className="flex items-center gap-4">

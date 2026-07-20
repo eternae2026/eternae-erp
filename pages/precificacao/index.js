@@ -56,8 +56,10 @@ export default function Precificacao() {
       .select(`
         *,
         estoque (
+          id,
           nome,
-          custo_unitario
+          custo_unitario,
+          categoria_item
         )
       `)
       .eq('produto_id', produtoId)

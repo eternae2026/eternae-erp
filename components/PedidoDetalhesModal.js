@@ -70,14 +70,30 @@ const podeCancelarPedido =
   }
 
   function nomeItem(item) {
-    return item.nome_item || item.produtos?.nome || 'Item'
-  }
+  return (
+    item.nome_item ||
+    item.produtos?.nome ||
+    item.kits?.nome ||
+    item.estoque?.nome ||
+    'Item'
+  )
+}
 
   function tipoItem(item) {
-    if (item.tipo_item === 'kit') return '🎁 Kit'
-
-    return '🛍️ Produto'
+  if (item.tipo_item === 'kit') {
+    return '🎁 Kit'
   }
+
+  if (item.tipo_item === 'acessorio') {
+    return '🎀 Acessório'
+  }
+
+  if (item.tipo_item === 'embalagem') {
+    return '📦 Embalagem'
+  }
+
+  return '☕ Produto'
+}
 
   const valorPedido = Number(pedido.valor || 0)
 const valorReferencia = Number(

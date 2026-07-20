@@ -83,11 +83,17 @@ const [politicaComercial, setPoliticaComercial] = useState(null)
           nome
         ),
         orcamento_itens (
-          *,
-          produtos (
-            nome
-          )
-        )
+  *,
+  produtos (
+    nome
+  ),
+  estoque (
+    id,
+    nome,
+    categoria_item,
+    preco_venda
+  )
+)
       `)
       .order('created_at', { ascending: false })
 
@@ -148,8 +154,9 @@ const [politicaComercial, setPoliticaComercial] = useState(null)
     if (itens && itens.length > 0) {
       const itensParaSalvar = itens.map(item => ({
         orcamento_id: orcamentoCriado.id,
-        produto_id: item.produto_id,
-        kit_id: item.kit_id,
+        produto_id: item.produto_id || null,
+        kit_id: item.kit_id || null,
+        estoque_id: item.estoque_id || null,
         tipo_item: item.tipo_item,
         nome_item: item.nome_item,
         quantidade: item.quantidade,
@@ -195,8 +202,9 @@ const [politicaComercial, setPoliticaComercial] = useState(null)
       if (itens && itens.length > 0) {
         const itensParaSalvar = itens.map(item => ({
           orcamento_id: orcamentoEditando.id,
-          produto_id: item.produto_id,
-          kit_id: item.kit_id,
+          produto_id: item.produto_id || null,
+          kit_id: item.kit_id || null,
+          estoque_id: item.estoque_id || null,
           tipo_item: item.tipo_item,
           nome_item: item.nome_item,
           quantidade: item.quantidade,
@@ -392,8 +400,13 @@ setOrcamentoParaAprovar(null)
   }
 
   function nomeItem(item) {
-    return item.nome_item || item.produtos?.nome || 'Item'
-  }
+  return (
+    item.nome_item ||
+    item.produtos?.nome ||
+    item.estoque?.nome ||
+    'Item'
+  )
+}
 
   function nomesProdutos(orcamento) {
     const itens = orcamento.orcamento_itens || []

@@ -7,6 +7,10 @@ export default function Estoque() {
   const [itensEstoque, setItensEstoque] = useState([])
   const [openModal, setOpenModal] = useState(false)
   const [insumoEditando, setInsumoEditando] = useState(null)
+  const [filtroTipo, setFiltroTipo] =
+  useState('todos')
+  const [buscaItem, setBuscaItem] =
+  useState('')
 
   async function carregarEstoque() {
     const { data, error } = await supabase
@@ -93,11 +97,110 @@ export default function Estoque() {
     })
   }
 
+  function tipoVisual(item) {
+  if (item.categoria_item === 'embalagem') {
+    return 'Embalagem'
+  }
+
+  if (item.categoria_item === 'acessorio') {
+    return 'Acessório'
+  }
+
+  return 'Produção'
+}
+
+function vendavelVisual(item) {
+  return item.vendavel ? 'Sim' : 'Não'
+}
+
   function formatarNumero(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
       maximumFractionDigits: 2
     })
   }
+
+  const itensFiltrados =
+  itensEstoque.filter(item => {
+
+    const passouBusca =
+      item.nome
+        ?.toLowerCase()
+        .includes(
+          buscaItem.toLowerCase()
+        )
+
+    if (!passouBusca) {
+      return false
+    }
+
+    if (filtroTipo === 'todos') {
+      return true
+    }
+
+    if (filtroTipo === 'vendaveis') {
+      return item.vendavel
+    }
+
+    if (filtroTipo === 'baixo') {
+  return (
+    statusEstoque(item) === 'Baixo'
+  )
+}
+
+if (filtroTipo === 'esgotado') {
+  return (
+    statusEstoque(item) === 'Esgotado'
+  )
+}
+
+    return (
+      item.categoria_item === filtroTipo
+    )
+  })
+
+  function totalProducao() {
+  return itensEstoque.filter(
+    item =>
+      item.categoria_item ===
+      'producao'
+  ).length
+}
+
+function totalEmbalagens() {
+  return itensEstoque.filter(
+    item =>
+      item.categoria_item ===
+      'embalagem'
+  ).length
+}
+
+function totalAcessorios() {
+  return itensEstoque.filter(
+    item =>
+      item.categoria_item ===
+      'acessorio'
+  ).length
+}
+
+function totalVendaveis() {
+  return itensEstoque.filter(
+    item => item.vendavel
+  ).length
+}
+
+function totalBaixoEstoque() {
+  return itensEstoque.filter(
+    item =>
+      statusEstoque(item) === 'Baixo'
+  ).length
+}
+
+function totalEsgotados() {
+  return itensEstoque.filter(
+    item =>
+      statusEstoque(item) === 'Esgotado'
+  ).length
+}
 
   function totalInsumos() {
     return itensEstoque.length
@@ -121,20 +224,20 @@ export default function Estoque() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
+    <div className="flex min-h-screen bg-gray-100 overflow-hidden">
       <Sidebar />
 
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-8 overflow-hidden">
 
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-start justify-between gap-4 mb-8">
 
           <div>
             <h1 className="text-3xl font-bold text-gray-800">
-              Estoque de Insumos
+              Estoque
             </h1>
 
             <p className="text-gray-500">
-              Controle de insumos disponíveis, reservados, mínimos e custos da Eternaê.
+              Controle de materiais de produção, embalagens, acessórios e custos da Eternaê.
             </p>
           </div>
 
@@ -145,7 +248,7 @@ export default function Estoque() {
             }}
             className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
           >
-            ➕ Novo Insumo
+            ➕ Novo Item
           </button>
 
         </div>
@@ -154,7 +257,7 @@ export default function Estoque() {
 
           <div className="bg-white rounded-2xl p-6 shadow-sm">
             <p className="text-gray-500">
-              Total de insumos
+              Total de itens
             </p>
 
             <h2 className="text-2xl font-bold text-gray-800 mt-2">
@@ -194,13 +297,132 @@ export default function Estoque() {
 
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm overflow-x-auto">
-          <table className="w-full min-w-[1200px]">
+<div className="mb-4">
+
+  <input
+    type="text"
+    placeholder="Buscar item..."
+    value={buscaItem}
+    onChange={(e) =>
+      setBuscaItem(e.target.value)
+    }
+    className="
+      w-full
+      md:w-96
+      border
+      rounded-xl
+      px-4
+      py-3
+      bg-white
+    "
+  />
+
+</div>
+
+<div className="flex gap-3 mb-6 flex-wrap">
+
+  <button
+    onClick={() => setFiltroTipo('todos')}
+    className={`px-4 py-2 rounded-xl transition ${
+      filtroTipo === 'todos'
+        ? 'bg-gray-900 text-white'
+        : 'bg-white border'
+    }`}
+  >
+    Todos ({itensEstoque.length})
+  </button>
+
+  <button
+    onClick={() => setFiltroTipo('producao')}
+    className={`px-4 py-2 rounded-xl transition ${
+      filtroTipo === 'producao'
+        ? 'bg-gray-900 text-white'
+        : 'bg-white border'
+    }`}
+  >
+    Produção ({totalProducao()})
+  </button>
+
+  <button
+    onClick={() => setFiltroTipo('embalagem')}
+    className={`px-4 py-2 rounded-xl transition ${
+      filtroTipo === 'embalagem'
+        ? 'bg-gray-900 text-white'
+        : 'bg-white border'
+    }`}
+  >
+    Embalagens ({totalEmbalagens()})
+  </button>
+
+  <button
+    onClick={() => setFiltroTipo('acessorio')}
+    className={`px-4 py-2 rounded-xl transition ${
+      filtroTipo === 'acessorio'
+        ? 'bg-gray-900 text-white'
+        : 'bg-white border'
+    }`}
+  >
+    Acessórios ({totalAcessorios()})
+  </button>
+
+  <button
+    onClick={() => setFiltroTipo('vendaveis')}
+    className={`px-4 py-2 rounded-xl transition ${
+      filtroTipo === 'vendaveis'
+        ? 'bg-gray-900 text-white'
+        : 'bg-white border'
+    }`}
+  >
+    Vendáveis ({totalVendaveis()})
+  </button>
+
+  <button
+  onClick={() =>
+    setFiltroTipo('baixo')
+  }
+  className={`px-4 py-2 rounded-xl transition ${
+    filtroTipo === 'baixo'
+      ? 'bg-yellow-500 text-white'
+      : 'bg-white border'
+  }`}
+>
+  Baixo ({totalBaixoEstoque()})
+</button>
+
+<button
+  onClick={() =>
+    setFiltroTipo('esgotado')
+  }
+  className={`px-4 py-2 rounded-xl transition ${
+    filtroTipo === 'esgotado'
+      ? 'bg-red-600 text-white'
+      : 'bg-white border'
+  }`}
+>
+  Esgotados ({totalEsgotados()})
+</button>
+
+</div>
+
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden w-full">
+          <div className="overflow-auto max-h-[55vh] w-full">
+            <table className="w-full min-w-[1500px]">
 
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left p-4 text-gray-600">Insumo</th>
+                <th className="text-left p-4 text-gray-600">Item</th>
                 <th className="text-left p-4 text-gray-600">Categoria</th>
+                <th className="text-left p-4 text-gray-600">
+  Tipo
+</th>
+
+<th className="text-left p-4 text-gray-600">
+  Vendável
+</th>
+
+<th className="text-left p-4 text-gray-600">
+  Preço Venda
+</th>
                 <th className="text-left p-4 text-gray-600">Disponível</th>
                 <th className="text-left p-4 text-gray-600">Reservado</th>
                 <th className="text-left p-4 text-gray-600">Livre</th>
@@ -217,7 +439,7 @@ export default function Estoque() {
 
             <tbody>
 
-              {itensEstoque.map(item => {
+              {itensFiltrados.map(item => {
                 const status = statusEstoque(item)
 
                 return (
@@ -238,6 +460,28 @@ export default function Estoque() {
                     <td className="p-4">
                       {item.categoria || '-'}
                     </td>
+
+                    <td className="p-4">
+  {tipoVisual(item)}
+</td>
+
+<td className="p-4">
+  <span
+    className={`px-3 py-1 rounded-full text-sm ${
+      item.vendavel
+        ? 'bg-blue-100 text-blue-700'
+        : 'bg-gray-100 text-gray-600'
+    }`}
+  >
+    {vendavelVisual(item)}
+  </span>
+</td>
+
+<td className="p-4 font-semibold">
+  {item.vendavel
+    ? formatarMoeda(item.preco_venda)
+    : '-'}
+</td>
 
                     <td className="p-4">
                       {formatarNumero(item.quantidade_disponivel)}
@@ -295,13 +539,13 @@ export default function Estoque() {
                 )
               })}
 
-              {itensEstoque.length === 0 && (
+              {itensFiltrados.length === 0 && (
                 <tr>
                   <td
-                    colSpan="13"
+                    colSpan="16"
                     className="p-6 text-center text-gray-500"
                   >
-                    Nenhum insumo cadastrado no estoque.
+                    Nenhum item encontrado no estoque.
                   </td>
                 </tr>
               )}
@@ -309,6 +553,7 @@ export default function Estoque() {
             </tbody>
 
           </table>
+         </div>
         </div>
 
         <InsumoModal
