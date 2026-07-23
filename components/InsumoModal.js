@@ -9,6 +9,10 @@ export default function InsumoModal({
   const [nome, setNome] = useState('')
   const [categoriaItem, setCategoriaItem] = useState('producao')
   const [vendavel, setVendavel] = useState(false)
+  const [
+    embalagemPremium,
+    setEmbalagemPremium
+  ] = useState(false)
   const [precoVenda, setPrecoVenda] = useState('')
 
   const [quantidadeDisponivel, setQuantidadeDisponivel] = useState('')
@@ -29,30 +33,36 @@ export default function InsumoModal({
 
       setVendavel(Boolean(insumo.vendavel))
 
+      setEmbalagemPremium(
+        Boolean(
+          insumo.embalagem_premium
+        )
+      )
+
       setPrecoVenda(
         insumo.preco_venda === null ||
-        insumo.preco_venda === undefined
+          insumo.preco_venda === undefined
           ? ''
           : String(insumo.preco_venda)
       )
 
       setQuantidadeDisponivel(
         insumo.quantidade_disponivel === null ||
-        insumo.quantidade_disponivel === undefined
+          insumo.quantidade_disponivel === undefined
           ? ''
           : String(insumo.quantidade_disponivel)
       )
 
       setQuantidadeReservada(
         insumo.quantidade_reservada === null ||
-        insumo.quantidade_reservada === undefined
+          insumo.quantidade_reservada === undefined
           ? ''
           : String(insumo.quantidade_reservada)
       )
 
       setEstoqueMinimo(
         insumo.estoque_minimo === null ||
-        insumo.estoque_minimo === undefined
+          insumo.estoque_minimo === undefined
           ? ''
           : String(insumo.estoque_minimo)
       )
@@ -62,14 +72,14 @@ export default function InsumoModal({
 
       setValorCompra(
         insumo.valor_compra === null ||
-        insumo.valor_compra === undefined
+          insumo.valor_compra === undefined
           ? ''
           : String(insumo.valor_compra)
       )
 
       setQuantidadeCompra(
         insumo.quantidade_compra === null ||
-        insumo.quantidade_compra === undefined
+          insumo.quantidade_compra === undefined
           ? '1'
           : String(insumo.quantidade_compra)
       )
@@ -107,6 +117,7 @@ export default function InsumoModal({
     setNome('')
     setCategoriaItem('producao')
     setVendavel(false)
+    setEmbalagemPremium(false)
     setPrecoVenda('')
     setQuantidadeDisponivel('')
     setQuantidadeReservada('')
@@ -150,6 +161,7 @@ export default function InsumoModal({
 
     if (!marcado) {
       setPrecoVenda('')
+      setEmbalagemPremium(false)
     }
   }
 
@@ -188,6 +200,12 @@ export default function InsumoModal({
       ),
 
       vendavel,
+
+      embalagem_premium:
+        categoriaItem ===
+          'embalagem'
+          ? embalagemPremium
+          : false,
 
       preco_venda: vendavel
         ? precoVendaNumero
@@ -273,247 +291,293 @@ export default function InsumoModal({
             </p>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Categoria
-              </label>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Categoria
+                </label>
 
-              <select
-                value={categoriaItem}
-                onChange={(e) => setCategoriaItem(e.target.value)}
-                className="w-full border rounded-xl px-4 py-3 bg-white"
-              >
-                <option value="producao">
-                  Produção
-                </option>
+                <select
+                  value={categoriaItem}
+                  onChange={(e) => {
+                    const novaCategoria = e.target.value
 
-                <option value="embalagem">
-                  Embalagem
-                </option>
+                    setCategoriaItem(novaCategoria)
 
-                <option value="acessorio">
-                  Acessório
-                </option>
-              </select>
-            </div>
+                    if (novaCategoria !== 'embalagem') {
+                      setEmbalagemPremium(false)
+                    }
+                  }}
+                  className="w-full border rounded-xl px-4 py-3 bg-white"
+                >
+                  <option value="producao">
+                    Produção
+                  </option>
 
-            <div className="bg-gray-50 rounded-xl p-4 mt-4">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={vendavel}
-                  onChange={(e) =>
-                    alterarVendavel(e.target.checked)
-                  }
-                  className="mt-1 h-4 w-4"
-                />
+                  <option value="embalagem">
+                    Embalagem
+                  </option>
 
-                <div>
-                  <p className="font-semibold text-gray-800">
-                    Pode ser vendido separadamente
-                  </p>
+                  <option value="acessorio">
+                    Acessório
+                  </option>
+                </select>
+              </div>
 
-                  <p className="text-sm text-gray-500 mt-1">
-                    Quando marcado, o item poderá aparecer como adicional em orçamentos, pedidos e kits.
+              <div className="bg-gray-50 rounded-xl p-4 mt-4">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={vendavel}
+                    onChange={(e) =>
+                      alterarVendavel(e.target.checked)
+                    }
+                    className="mt-1 h-4 w-4"
+                  />
+
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      Pode ser vendido separadamente
+                    </p>
+
+                    <p className="text-sm text-gray-500 mt-1">
+                      Quando marcado, o item poderá aparecer como adicional em
+                      orçamentos, pedidos e kits.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {categoriaItem === 'embalagem' && (
+                <div className="bg-amber-50 rounded-xl p-4 mt-4 border border-amber-100">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={embalagemPremium}
+                      onChange={(e) => {
+                        const marcado = e.target.checked
+
+                        setEmbalagemPremium(marcado)
+
+                        if (marcado) {
+                          setVendavel(true)
+                        }
+                      }}
+                      className="mt-1 h-4 w-4"
+                    />
+
+                    <div>
+                      <p className="font-semibold text-gray-800">
+                        Embalagem premium
+                      </p>
+
+                      <p className="text-sm text-gray-500 mt-1">
+                        Quando marcada, esta embalagem substituirá automaticamente
+                        a embalagem padrão em kits e poderá ser oferecida ao cliente
+                        como opcional.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {vendavel && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Preço de venda
+                  </label>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0,00"
+                    value={precoVenda}
+                    onChange={(e) =>
+                      setPrecoVenda(e.target.value)
+                    }
+                    className="w-full border rounded-xl px-4 py-3"
+                  />
+
+                  <p className="text-xs text-gray-500 mt-2">
+                    Na ficha técnica, o item continuará entrando pelo custo unitário.
+                    Este valor será usado somente quando ele for vendido
+                    separadamente.
                   </p>
                 </div>
-              </label>
+              )}
             </div>
 
-            {vendavel && (
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Preço de venda
-                </label>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Quantidade disponível
+              </label>
 
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0,00"
-                  value={precoVenda}
-                  onChange={(e) =>
-                    setPrecoVenda(e.target.value)
-                  }
-                  className="w-full border rounded-xl px-4 py-3"
-                />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0"
+                value={quantidadeDisponivel}
+                onChange={(e) =>
+                  setQuantidadeDisponivel(e.target.value)
+                }
+                className="w-full border rounded-xl px-4 py-3"
+              />
+            </div>
 
-                <p className="text-xs text-gray-500 mt-2">
-                  Na ficha técnica, o item continuará entrando pelo custo unitário. Este valor será usado somente quando ele for vendido separadamente.
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Quantidade reservada
+              </label>
+
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0"
+                value={quantidadeReservada}
+                onChange={(e) =>
+                  setQuantidadeReservada(e.target.value)
+                }
+                className="w-full border rounded-xl px-4 py-3"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Estoque mínimo
+              </label>
+
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0"
+                value={estoqueMinimo}
+                onChange={(e) =>
+                  setEstoqueMinimo(e.target.value)
+                }
+                className="w-full border rounded-xl px-4 py-3"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Unidade de controle
+              </label>
+
+              <input
+                type="text"
+                placeholder="Ex.: unidade, ml, folha ou metro"
+                value={unidade}
+                onChange={(e) =>
+                  setUnidade(e.target.value)
+                }
+                className="w-full border rounded-xl px-4 py-3"
+              />
+            </div>
+
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Fornecedor
+              </label>
+
+              <input
+                type="text"
+                placeholder="Nome do fornecedor"
+                value={fornecedor}
+                onChange={(e) =>
+                  setFornecedor(e.target.value)
+                }
+                className="w-full border rounded-xl px-4 py-3"
+              />
+            </div>
+
+            <div className="col-span-2 border rounded-2xl p-5 mt-2">
+              <h3 className="font-bold text-gray-800 mb-1">
+                Dados de custo
+              </h3>
+
+              <p className="text-sm text-gray-500 mb-4">
+                O custo unitário será calculado automaticamente.
+              </p>
+
+              <div className="grid grid-cols-2 gap-4">
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Valor total da compra
+                  </label>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0,00"
+                    value={valorCompra}
+                    onChange={(e) =>
+                      setValorCompra(e.target.value)
+                    }
+                    className="w-full border rounded-xl px-4 py-3"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Quantidade comprada
+                  </label>
+
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    placeholder="1"
+                    value={quantidadeCompra}
+                    onChange={(e) =>
+                      setQuantidadeCompra(e.target.value)
+                    }
+                    className="w-full border rounded-xl px-4 py-3"
+                  />
+                </div>
+
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-4 mt-4">
+                <p className="text-sm text-gray-500">
+                  Custo unitário calculado
+                </p>
+
+                <p className="font-semibold text-gray-800 text-lg mt-1">
+                  {formatarMoeda(
+                    calcularCustoUnitario()
+                  )}
                 </p>
               </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Quantidade disponível
-            </label>
-
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0"
-              value={quantidadeDisponivel}
-              onChange={(e) =>
-                setQuantidadeDisponivel(e.target.value)
-              }
-              className="w-full border rounded-xl px-4 py-3"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Quantidade reservada
-            </label>
-
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0"
-              value={quantidadeReservada}
-              onChange={(e) =>
-                setQuantidadeReservada(e.target.value)
-              }
-              className="w-full border rounded-xl px-4 py-3"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Estoque mínimo
-            </label>
-
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0"
-              value={estoqueMinimo}
-              onChange={(e) =>
-                setEstoqueMinimo(e.target.value)
-              }
-              className="w-full border rounded-xl px-4 py-3"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Unidade de controle
-            </label>
-
-            <input
-              type="text"
-              placeholder="Ex.: unidade, ml, folha ou metro"
-              value={unidade}
-              onChange={(e) =>
-                setUnidade(e.target.value)
-              }
-              className="w-full border rounded-xl px-4 py-3"
-            />
-          </div>
-
-          <div className="col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Fornecedor
-            </label>
-
-            <input
-              type="text"
-              placeholder="Nome do fornecedor"
-              value={fornecedor}
-              onChange={(e) =>
-                setFornecedor(e.target.value)
-              }
-              className="w-full border rounded-xl px-4 py-3"
-            />
-          </div>
-
-          <div className="col-span-2 border rounded-2xl p-5 mt-2">
-            <h3 className="font-bold text-gray-800 mb-1">
-              Dados de custo
-            </h3>
-
-            <p className="text-sm text-gray-500 mb-4">
-              O custo unitário será calculado automaticamente.
-            </p>
-
-            <div className="grid grid-cols-2 gap-4">
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Valor total da compra
-                </label>
-
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0,00"
-                  value={valorCompra}
-                  onChange={(e) =>
-                    setValorCompra(e.target.value)
-                  }
-                  className="w-full border rounded-xl px-4 py-3"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Quantidade comprada
-                </label>
-
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  placeholder="1"
-                  value={quantidadeCompra}
-                  onChange={(e) =>
-                    setQuantidadeCompra(e.target.value)
-                  }
-                  className="w-full border rounded-xl px-4 py-3"
-                />
-              </div>
-
             </div>
 
-            <div className="bg-gray-50 rounded-xl p-4 mt-4">
-              <p className="text-sm text-gray-500">
-                Custo unitário calculado
-              </p>
-
-              <p className="font-semibold text-gray-800 text-lg mt-1">
-                {formatarMoeda(
-                  calcularCustoUnitario()
-                )}
-              </p>
-            </div>
           </div>
 
-        </div>
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-3 rounded-xl border"
+            >
+              Cancelar
+            </button>
 
-        <div className="flex justify-end gap-3 mt-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-3 rounded-xl border"
-          >
-            Cancelar
-          </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
+            >
+              {insumo
+                ? 'Salvar Alterações'
+                : 'Salvar Item'}
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
-          >
-            {insumo
-              ? 'Salvar Alterações'
-              : 'Salvar Item'}
-          </button>
-        </div>
-
+                </div>
       </div>
     </div>
   )

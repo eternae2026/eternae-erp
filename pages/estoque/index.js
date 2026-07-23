@@ -7,10 +7,15 @@ export default function Estoque() {
   const [itensEstoque, setItensEstoque] = useState([])
   const [openModal, setOpenModal] = useState(false)
   const [insumoEditando, setInsumoEditando] = useState(null)
+  const [menuAberto, setMenuAberto] = useState(null)
   const [filtroTipo, setFiltroTipo] =
-  useState('todos')
-  const [buscaItem, setBuscaItem] =
-  useState('')
+useState('todos')
+
+const [filtroAtivo, setFiltroAtivo] =
+useState('ativos')
+
+const [buscaItem, setBuscaItem] =
+useState('')
 
   async function carregarEstoque() {
     const { data, error } = await supabase
@@ -29,6 +34,26 @@ export default function Estoque() {
   useEffect(() => {
     carregarEstoque()
   }, [])
+
+  useEffect(() => {
+  function fecharMenuAoClicarFora() {
+    setMenuAberto(null)
+  }
+
+  if (menuAberto !== null) {
+    document.addEventListener(
+      'click',
+      fecharMenuAoClicarFora
+    )
+  }
+
+  return () => {
+    document.removeEventListener(
+      'click',
+      fecharMenuAoClicarFora
+    )
+  }
+}, [menuAberto])
 
   async function salvarInsumo(insumo) {
     if (insumoEditando) {
@@ -67,6 +92,264 @@ export default function Estoque() {
     setInsumoEditando(insumo)
     setOpenModal(true)
   }
+
+  async function desativarInsumo(insumo) {
+
+  const confirmar = window.confirm(
+    `Deseja realmente desativar "${insumo.nome}"?`
+  )
+
+  if (!confirmar) return
+
+  const { error } = await supabase
+    .from('estoque')
+    .update({
+      ativo: false
+    })
+    .eq('id', insumo.id)
+
+  if (error) {
+    console.log(error)
+    alert('Erro ao desativar item.')
+    return
+  }
+
+  setMenuAberto(null)
+
+  carregarEstoque()
+}
+
+async function reativarInsumo(insumo) {
+
+  const confirmar = window.confirm(
+    `Deseja realmente reativar "${insumo.nome}"?`
+  )
+
+  if (!confirmar) return
+
+  const { error } = await supabase
+    .from('estoque')
+    .update({
+      ativo: true
+    })
+    .eq('id', insumo.id)
+
+  if (error) {
+    console.log(error)
+    alert('Erro ao reativar item.')
+    return
+  }
+
+  setMenuAberto(null)
+
+  carregarEstoque()
+}
+
+async function excluirInsumo(insumo) {
+
+  /*
+    Verifica em quais produtos o item
+    do estoque é utilizado.
+  */
+  const {
+    data: composicoesProduto,
+    error: erroComposicoes
+  } = await supabase
+    .from('produto_composicao')
+    .select(`
+      id,
+      produto_id
+    `)
+    .eq('insumo_id', insumo.id)
+
+  if (erroComposicoes) {
+    console.log(
+      'Erro ao verificar composição de produtos:',
+      erroComposicoes
+    )
+
+    alert(
+      'Não foi possível verificar os vínculos deste item.'
+    )
+
+    return
+  }
+
+  /*
+    Verifica se o item foi adicionado
+    diretamente a algum kit como
+    acessório ou embalagem.
+  */
+  const {
+    data: kitsDiretos,
+    error: erroKitsDiretos
+  } = await supabase
+    .from('kit_itens')
+    .select(`
+      id,
+      kit_id
+    `)
+    .eq('estoque_id', insumo.id)
+
+  if (erroKitsDiretos) {
+    console.log(
+      'Erro ao verificar vínculos diretos com kits:',
+      erroKitsDiretos
+    )
+
+    alert(
+      'Não foi possível verificar os vínculos deste item.'
+    )
+
+    return
+  }
+
+  /*
+    Obtém os produtos que utilizam
+    este item do estoque.
+  */
+  const produtosIds = [
+    ...new Set(
+      (composicoesProduto || [])
+        .map(composicao =>
+          composicao.produto_id
+        )
+        .filter(Boolean)
+    )
+  ]
+
+  /*
+    Verifica se algum dos produtos
+    encontrados faz parte de kits.
+  */
+  let kitsIndiretos = []
+
+  if (produtosIds.length > 0) {
+    const {
+      data,
+      error: erroKitsIndiretos
+    } = await supabase
+      .from('kit_itens')
+      .select(`
+        id,
+        kit_id,
+        produto_id
+      `)
+      .in('produto_id', produtosIds)
+
+    if (erroKitsIndiretos) {
+      console.log(
+        'Erro ao verificar produtos utilizados em kits:',
+        erroKitsIndiretos
+      )
+
+      alert(
+        'Não foi possível verificar os vínculos deste item.'
+      )
+
+      return
+    }
+
+    kitsIndiretos = data || []
+  }
+
+  /*
+    Verifica se o item aparece
+    diretamente em orçamento.
+  */
+  const {
+    data: orcamentos,
+    error: erroOrcamentos
+  } = await supabase
+    .from('orcamento_itens')
+    .select('id')
+    .eq('estoque_id', insumo.id)
+
+  if (erroOrcamentos) {
+    console.log(
+      'Erro ao verificar orçamentos:',
+      erroOrcamentos
+    )
+
+    alert(
+      'Não foi possível verificar os vínculos deste item.'
+    )
+
+    return
+  }
+
+  const mensagens = []
+
+  if ((composicoesProduto || []).length > 0) {
+    mensagens.push(
+      '• Utilizado na composição de Produtos'
+    )
+  }
+
+  if ((kitsDiretos || []).length > 0) {
+    mensagens.push(
+      '• Adicionado diretamente a Kits como acessório ou embalagem'
+    )
+  }
+
+  if (kitsIndiretos.length > 0) {
+    mensagens.push(
+      '• Utilizado em Produtos que fazem parte de Kits'
+    )
+  }
+
+  if ((orcamentos || []).length > 0) {
+    mensagens.push(
+      '• Utilizado diretamente em Orçamentos/Pedidos'
+    )
+  }
+
+  if (mensagens.length > 0) {
+    alert(
+`Este item não pode ser excluído.
+
+Motivos:
+
+${mensagens.join('\n')}
+
+Utilize a opção DESATIVAR caso não deseje mais utilizá-lo.`
+    )
+
+    setMenuAberto(null)
+
+    return
+  }
+
+  const confirmar = window.confirm(
+`Deseja realmente excluir "${insumo.nome}"?
+
+Esta ação é definitiva e não poderá ser desfeita.`
+  )
+
+  if (!confirmar) return
+
+  const { error } = await supabase
+    .from('estoque')
+    .delete()
+    .eq('id', insumo.id)
+
+  if (error) {
+    console.log(
+      'Erro ao excluir item:',
+      error
+    )
+
+    alert(
+      'Erro ao excluir item.'
+    )
+
+    return
+  }
+
+  setMenuAberto(null)
+
+  carregarEstoque()
+}
 
   function quantidadeLivre(item) {
     return (
@@ -119,103 +402,108 @@ function vendavelVisual(item) {
     })
   }
 
-  const itensFiltrados =
-  itensEstoque.filter(item => {
-
-    const passouBusca =
-      item.nome
-        ?.toLowerCase()
-        .includes(
-          buscaItem.toLowerCase()
-        )
-
-    if (!passouBusca) {
+    const itensPorAtividadeEBusca = itensEstoque.filter(item => {
+    if (
+      filtroAtivo === 'ativos' &&
+      item.ativo === false
+    ) {
       return false
     }
 
+    if (
+      filtroAtivo === 'inativos' &&
+      item.ativo !== false
+    ) {
+      return false
+    }
+
+    const nomeItem = item.nome || ''
+    const textoBusca = buscaItem.trim().toLowerCase()
+
+    if (
+      textoBusca &&
+      !nomeItem.toLowerCase().includes(textoBusca)
+    ) {
+      return false
+    }
+
+    return true
+  })
+
+  const itensFiltrados = itensPorAtividadeEBusca.filter(item => {
     if (filtroTipo === 'todos') {
       return true
     }
 
     if (filtroTipo === 'vendaveis') {
-      return item.vendavel
+      return item.vendavel === true
     }
 
     if (filtroTipo === 'baixo') {
-  return (
-    statusEstoque(item) === 'Baixo'
-  )
-}
+      return statusEstoque(item) === 'Baixo'
+    }
 
-if (filtroTipo === 'esgotado') {
-  return (
-    statusEstoque(item) === 'Esgotado'
-  )
-}
+    if (filtroTipo === 'esgotado') {
+      return statusEstoque(item) === 'Esgotado'
+    }
 
-    return (
-      item.categoria_item === filtroTipo
-    )
+    return item.categoria_item === filtroTipo
   })
 
   function totalProducao() {
-  return itensEstoque.filter(
-    item =>
-      item.categoria_item ===
-      'producao'
-  ).length
-}
+    return itensPorAtividadeEBusca.filter(
+      item => item.categoria_item === 'producao'
+    ).length
+  }
 
-function totalEmbalagens() {
-  return itensEstoque.filter(
-    item =>
-      item.categoria_item ===
-      'embalagem'
-  ).length
-}
+  function totalEmbalagens() {
+    return itensPorAtividadeEBusca.filter(
+      item => item.categoria_item === 'embalagem'
+    ).length
+  }
 
-function totalAcessorios() {
-  return itensEstoque.filter(
-    item =>
-      item.categoria_item ===
-      'acessorio'
-  ).length
-}
+  function totalAcessorios() {
+    return itensPorAtividadeEBusca.filter(
+      item => item.categoria_item === 'acessorio'
+    ).length
+  }
 
-function totalVendaveis() {
-  return itensEstoque.filter(
-    item => item.vendavel
-  ).length
-}
+  function totalVendaveis() {
+    return itensPorAtividadeEBusca.filter(
+      item => item.vendavel === true
+    ).length
+  }
 
-function totalBaixoEstoque() {
-  return itensEstoque.filter(
-    item =>
-      statusEstoque(item) === 'Baixo'
-  ).length
-}
+  function totalBaixoEstoque() {
+    return itensPorAtividadeEBusca.filter(
+      item => statusEstoque(item) === 'Baixo'
+    ).length
+  }
 
-function totalEsgotados() {
-  return itensEstoque.filter(
-    item =>
-      statusEstoque(item) === 'Esgotado'
-  ).length
-}
+  function totalEsgotados() {
+    return itensPorAtividadeEBusca.filter(
+      item => statusEstoque(item) === 'Esgotado'
+    ).length
+  }
 
   function totalInsumos() {
-    return itensEstoque.length
+    return itensFiltrados.length
   }
 
   function totalBaixo() {
-    return itensEstoque.filter(item => statusEstoque(item) === 'Baixo').length
+    return itensFiltrados.filter(
+      item => statusEstoque(item) === 'Baixo'
+    ).length
   }
 
   function totalEsgotado() {
-    return itensEstoque.filter(item => statusEstoque(item) === 'Esgotado').length
+    return itensFiltrados.filter(
+      item => statusEstoque(item) === 'Esgotado'
+    ).length
   }
 
   function valorTotalEstoque() {
-    return itensEstoque.reduce((total, item) => {
+    return itensFiltrados.reduce((total, item) => {
       return total + (
         quantidadeLivre(item) *
         Number(item.custo_unitario || 0)
@@ -227,7 +515,7 @@ function totalEsgotados() {
     <div className="flex min-h-screen bg-gray-100 overflow-hidden">
       <Sidebar />
 
-      <main className="flex-1 p-8 overflow-hidden">
+      <main className="flex-1 p-8 min-w-0">
 
         <div className="flex items-start justify-between gap-4 mb-8">
 
@@ -319,6 +607,43 @@ function totalEsgotados() {
 
 </div>
 
+<div className="flex gap-3 mb-4">
+
+  <button
+    onClick={() => setFiltroAtivo('ativos')}
+    className={`px-4 py-2 rounded-xl transition ${
+      filtroAtivo === 'ativos'
+        ? 'bg-green-600 text-white'
+        : 'bg-white border'
+    }`}
+  >
+    Ativos
+  </button>
+
+  <button
+    onClick={() => setFiltroAtivo('inativos')}
+    className={`px-4 py-2 rounded-xl transition ${
+      filtroAtivo === 'inativos'
+        ? 'bg-gray-700 text-white'
+        : 'bg-white border'
+    }`}
+  >
+    Inativos
+  </button>
+
+  <button
+    onClick={() => setFiltroAtivo('todos')}
+    className={`px-4 py-2 rounded-xl transition ${
+      filtroAtivo === 'todos'
+        ? 'bg-blue-600 text-white'
+        : 'bg-white border'
+    }`}
+  >
+    Todos
+  </button>
+
+</div>
+
 <div className="flex gap-3 mb-6 flex-wrap">
 
   <button
@@ -329,113 +654,123 @@ function totalEsgotados() {
         : 'bg-white border'
     }`}
   >
-    Todos ({itensEstoque.length})
+    Todos ({itensPorAtividadeEBusca.length})
   </button>
 
   <button
-    onClick={() => setFiltroTipo('producao')}
+    onClick={() => setFiltroTipo('baixo')}
     className={`px-4 py-2 rounded-xl transition ${
-      filtroTipo === 'producao'
-        ? 'bg-gray-900 text-white'
+      filtroTipo === 'baixo'
+        ? 'bg-yellow-500 text-white'
         : 'bg-white border'
     }`}
   >
-    Produção ({totalProducao()})
+    Baixo ({totalBaixoEstoque()})
   </button>
 
   <button
-    onClick={() => setFiltroTipo('embalagem')}
+    onClick={() => setFiltroTipo('esgotado')}
     className={`px-4 py-2 rounded-xl transition ${
-      filtroTipo === 'embalagem'
-        ? 'bg-gray-900 text-white'
+      filtroTipo === 'esgotado'
+        ? 'bg-red-600 text-white'
         : 'bg-white border'
     }`}
   >
-    Embalagens ({totalEmbalagens()})
+    Esgotados ({totalEsgotados()})
   </button>
-
-  <button
-    onClick={() => setFiltroTipo('acessorio')}
-    className={`px-4 py-2 rounded-xl transition ${
-      filtroTipo === 'acessorio'
-        ? 'bg-gray-900 text-white'
-        : 'bg-white border'
-    }`}
-  >
-    Acessórios ({totalAcessorios()})
-  </button>
-
-  <button
-    onClick={() => setFiltroTipo('vendaveis')}
-    className={`px-4 py-2 rounded-xl transition ${
-      filtroTipo === 'vendaveis'
-        ? 'bg-gray-900 text-white'
-        : 'bg-white border'
-    }`}
-  >
-    Vendáveis ({totalVendaveis()})
-  </button>
-
-  <button
-  onClick={() =>
-    setFiltroTipo('baixo')
-  }
-  className={`px-4 py-2 rounded-xl transition ${
-    filtroTipo === 'baixo'
-      ? 'bg-yellow-500 text-white'
-      : 'bg-white border'
-  }`}
->
-  Baixo ({totalBaixoEstoque()})
-</button>
-
-<button
-  onClick={() =>
-    setFiltroTipo('esgotado')
-  }
-  className={`px-4 py-2 rounded-xl transition ${
-    filtroTipo === 'esgotado'
-      ? 'bg-red-600 text-white'
-      : 'bg-white border'
-  }`}
->
-  Esgotados ({totalEsgotados()})
-</button>
 
 </div>
-
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden w-full">
-          <div className="overflow-auto max-h-[55vh] w-full">
-            <table className="w-full min-w-[1500px]">
+  <div className="overflow-y-auto overflow-x-hidden max-h-[60vh] w-full">
 
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left p-4 text-gray-600">Item</th>
-                <th className="text-left p-4 text-gray-600">Categoria</th>
-                <th className="text-left p-4 text-gray-600">
-  Tipo
-</th>
+    <table className="w-full table-fixed text-xs">
 
-<th className="text-left p-4 text-gray-600">
-  Vendável
-</th>
+      <colgroup>
+        <col className="w-[10%]" />
+        <col className="w-[7%]" />
+        <col className="w-[6%]" />
+        <col className="w-[5%]" />
+        <col className="w-[6%]" />
+        <col className="w-[6%]" />
+        <col className="w-[6%]" />
+        <col className="w-[5%]" />
+        <col className="w-[5%]" />
+        <col className="w-[6%]" />
+        <col className="w-[7%]" />
+        <col className="w-[5%]" />
+        <col className="w-[7%]" />
+        <col className="w-[6%]" />
+        <col className="w-[9%]" />
+        <col className="w-[4%]" />
+      </colgroup>
 
-<th className="text-left p-4 text-gray-600">
-  Preço Venda
-</th>
-                <th className="text-left p-4 text-gray-600">Disponível</th>
-                <th className="text-left p-4 text-gray-600">Reservado</th>
-                <th className="text-left p-4 text-gray-600">Livre</th>
-                <th className="text-left p-4 text-gray-600">Mínimo</th>
-                <th className="text-left p-4 text-gray-600">Unidade</th>
-                <th className="text-left p-4 text-gray-600">Valor Compra</th>
-                <th className="text-left p-4 text-gray-600">Qtd Compra</th>
-                <th className="text-left p-4 text-gray-600">Custo Unit.</th>
-                <th className="text-left p-4 text-gray-600">Status</th>
-                <th className="text-left p-4 text-gray-600">Fornecedor</th>
-                <th className="text-left p-4 text-gray-600">Ações</th>
-              </tr>
-            </thead>
+      <thead className="bg-gray-50 sticky top-0 z-20 border-b border-gray-200">
+        <tr>
+          <th className="text-left px-3 py-3 font-semibold text-gray-600">
+            Item
+          </th>
+
+          <th className="text-left px-2 py-3 font-semibold text-gray-600">
+            Categoria
+          </th>
+
+          <th className="text-left px-2 py-3 font-semibold text-gray-600">
+            Tipo
+          </th>
+
+          <th className="text-center px-1 py-3 font-semibold text-gray-600">
+            Vendável
+          </th>
+
+          <th className="text-right px-2 py-3 font-semibold text-gray-600">
+            Preço
+          </th>
+
+          <th className="text-right px-2 py-3 font-semibold text-gray-600">
+            Disponível
+          </th>
+
+          <th className="text-right px-2 py-3 font-semibold text-gray-600">
+            Reservado
+          </th>
+
+          <th className="text-right px-2 py-3 font-semibold text-gray-600">
+            Livre
+          </th>
+
+          <th className="text-right px-2 py-3 font-semibold text-gray-600">
+            Mínimo
+          </th>
+
+          <th className="text-center px-2 py-3 font-semibold text-gray-600">
+            Unidade
+          </th>
+
+          <th className="text-right px-2 py-3 font-semibold text-gray-600">
+            Valor compra
+          </th>
+
+          <th className="text-right px-2 py-3 font-semibold text-gray-600">
+            Qtd. compra
+          </th>
+
+          <th className="text-right px-2 py-3 font-semibold text-gray-700">
+            Custo unit.
+          </th>
+
+          <th className="text-center px-2 py-3 font-semibold text-gray-600">
+            Status
+          </th>
+
+          <th className="text-left px-2 py-3 font-semibold text-gray-600">
+            Fornecedor
+          </th>
+
+          <th className="text-center px-1 py-3 font-semibold text-gray-600">
+            Ações
+          </th>
+        </tr>
+      </thead>
 
             <tbody>
 
@@ -527,14 +862,243 @@ function totalEsgotados() {
                       {item.fornecedor || '-'}
                     </td>
 
-                    <td className="p-4">
-                      <button
-                        onClick={() => editarInsumo(item)}
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        Editar
-                      </button>
-                    </td>
+                    <td className="p-4 relative">
+
+  <button
+    type="button"
+    onClick={(event) => {
+      event.stopPropagation()
+
+      setMenuAberto(
+        menuAberto === item.id
+          ? null
+          : item.id
+      )
+    }}
+    className="
+      w-9
+      h-9
+      inline-flex
+      items-center
+      justify-center
+      rounded-lg
+      border
+      border-gray-200
+      bg-white
+      text-gray-600
+      hover:bg-gray-50
+      hover:text-gray-900
+      transition
+    "
+    title="Ações"
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <circle cx="12" cy="5" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="12" cy="19" r="1.8" />
+    </svg>
+  </button>
+
+  {menuAberto === item.id && (
+
+    <div
+      onClick={(event) =>
+        event.stopPropagation()
+      }
+      className="
+        absolute
+        right-4
+        top-12
+        z-50
+        w-48
+        bg-white
+        border
+        border-gray-100
+        rounded-xl
+        shadow-xl
+        p-2
+      "
+    >
+
+      <button
+        type="button"
+        onClick={() => {
+          setMenuAberto(null)
+          editarInsumo(item)
+        }}
+        className="
+          w-full
+          flex
+          items-center
+          gap-3
+          px-3
+          py-2.5
+          rounded-lg
+          text-sm
+          text-gray-700
+          hover:bg-gray-50
+          transition
+        "
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="17"
+          height="17"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+
+        Editar
+      </button>
+
+      {item.ativo !== false && (
+
+        <button
+          type="button"
+          onClick={() => desativarInsumo(item)}
+          className="
+            w-full
+            flex
+            items-center
+            gap-3
+            px-3
+            py-2.5
+            rounded-lg
+            text-sm
+            text-amber-700
+            hover:bg-amber-50
+            transition
+          "
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="17"
+            height="17"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect
+              x="6"
+              y="4"
+              width="4"
+              height="16"
+              rx="1"
+            />
+
+            <rect
+              x="14"
+              y="4"
+              width="4"
+              height="16"
+              rx="1"
+            />
+          </svg>
+
+          Desativar
+        </button>
+
+      )}
+
+      {item.ativo === false && (
+
+        <button
+          type="button"
+          onClick={() => reativarInsumo(item)}
+          className="
+            w-full
+            flex
+            items-center
+            gap-3
+            px-3
+            py-2.5
+            rounded-lg
+            text-sm
+            text-green-700
+            hover:bg-green-50
+            transition
+          "
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="17"
+            height="17"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polygon points="6 3 20 12 6 21 6 3" />
+          </svg>
+
+          Reativar
+        </button>
+
+      )}
+
+      <div className="h-px bg-gray-100 my-1" />
+
+      <button
+        type="button"
+        onClick={() => excluirInsumo(item)}
+        className="
+          w-full
+          flex
+          items-center
+          gap-3
+          px-3
+          py-2.5
+          rounded-lg
+          text-sm
+          text-red-600
+          hover:bg-red-50
+          transition
+        "
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="17"
+          height="17"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 6h18" />
+          <path d="M8 6V4h8v2" />
+          <path d="M19 6l-1 14H6L5 6" />
+          <path d="M10 11v6" />
+          <path d="M14 11v6" />
+        </svg>
+
+        Excluir
+      </button>
+
+    </div>
+
+  )}
+
+</td>
                   </tr>
                 )
               })}

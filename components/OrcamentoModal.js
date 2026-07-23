@@ -18,6 +18,10 @@ const [validadeDias, setValidadeDias] = useState(7)
   const [itens, setItens] = useState([])
 const [kits, setKits] = useState([])
 const [itensVendaveis, setItensVendaveis] = useState([])
+const [
+  embalagensPremium,
+  setEmbalagensPremium
+] = useState([])
 
   const [tipoItem, setTipoItem] = useState('produto')
   const [produtoId, setProdutoId] = useState('')
@@ -28,9 +32,10 @@ const [quantidade, setQuantidade] = useState(1)
 
   useEffect(() => {
   if (open) {
-    carregarKits()
-    carregarItensVendaveis()
-  }
+  carregarKits()
+  carregarItensVendaveis()
+  carregarEmbalagensPremium()
+}
 }, [open])
 
   useEffect(() => {
@@ -93,10 +98,10 @@ setValidadeDias(
       unidade
     `)
     .eq('vendavel', true)
-    .in('categoria_item', [
-      'acessorio',
-      'embalagem'
-    ])
+    .eq(
+  'categoria_item',
+  'acessorio'
+)
     .order('categoria_item', {
       ascending: true
     })
@@ -115,6 +120,37 @@ setValidadeDias(
   }
 
   setItensVendaveis(data || [])
+}
+
+async function carregarEmbalagensPremium() {
+  const { data, error } =
+    await supabase
+      .from('estoque')
+      .select(`
+        id,
+        nome,
+        preco_venda,
+        custo_unitario,
+        embalagem_premium
+      `)
+      .eq(
+        'embalagem_premium',
+        true
+      )
+      .order('nome')
+
+  if (error) {
+    console.log(
+      'Erro ao carregar embalagens premium:',
+      error
+    )
+
+    return
+  }
+
+  setEmbalagensPremium(
+    data || []
+  )
 }
 
   function limparSelecaoItem() {
@@ -186,7 +222,12 @@ setValidadeDias(
   function selecionarItemVendavel(id) {
   setEstoqueId(id)
 
-  const item = itensVendaveis.find(
+  const listaParaBuscar =
+    tipoItem === 'embalagem'
+      ? embalagensPremium
+      : itensVendaveis
+
+  const item = listaParaBuscar.find(
     registro =>
       String(registro.id) ===
       String(id)
@@ -198,7 +239,9 @@ setValidadeDias(
   }
 
   setValorUnitario(
-    Number(item.preco_venda || 0)
+    String(
+      Number(item.preco_venda || 0)
+    )
   )
 }
 
@@ -281,51 +324,66 @@ setValidadeDias(
     ])
   }
 
-  if (tipoItem === 'estoque') {
-    if (!estoqueId) {
-      alert(
-        'Selecione um acessório ou embalagem.'
-      )
-      return
-    }
-
-    const item =
-      itemVendavelSelecionado()
-
-    if (!item) {
-      alert(
-        'O item selecionado não foi encontrado.'
-      )
-      return
-    }
-
-    const tipoEstoque =
-      item.categoria_item === 'embalagem'
-        ? 'embalagem'
-        : 'acessorio'
-
-    setItens([
-      ...itens,
-      {
-        tipo_item: tipoEstoque,
-        produto_id: null,
-        kit_id: null,
-        estoque_id: item.id,
-        nome_item:
-          item.nome || 'Item adicional',
-        produtos: null,
-        estoque: {
-          id: item.id,
-          nome: item.nome,
-          categoria_item:
-            item.categoria_item
-        },
-        quantidade: quantidadeNumero,
-        valor_unitario: valorNumero,
-        subtotal
-      }
-    ])
+  if (
+  tipoItem === 'estoque' ||
+  tipoItem === 'embalagem'
+) {
+  if (!estoqueId) {
+    alert(
+      tipoItem === 'embalagem'
+        ? 'Selecione uma embalagem premium.'
+        : 'Selecione um acessório.'
+    )
+    return
   }
+
+  const item =
+    tipoItem === 'embalagem'
+      ? embalagensPremium.find(
+          registro =>
+            String(registro.id) ===
+            String(estoqueId)
+        )
+      : itemVendavelSelecionado()
+
+  if (!item) {
+    alert(
+      'O item selecionado não foi encontrado.'
+    )
+    return
+  }
+
+  const tipoEstoque =
+    tipoItem === 'embalagem'
+      ? 'embalagem'
+      : 'acessorio'
+
+  setItens([
+    ...itens,
+    {
+      tipo_item: tipoEstoque,
+      produto_id: null,
+      kit_id: null,
+      estoque_id: item.id,
+      nome_item:
+        item.nome || 'Item adicional',
+      produtos: null,
+      estoque: {
+        id: item.id,
+        nome: item.nome,
+        categoria_item:
+          tipoEstoque,
+        embalagem_premium:
+          Boolean(
+            item.embalagem_premium
+          )
+      },
+      quantidade: quantidadeNumero,
+      valor_unitario: valorNumero,
+      subtotal
+    }
+  ])
+}
 
   limparSelecaoItem()
 }
@@ -454,43 +512,61 @@ valor_final: calcularTotalCartao(),
   </option>
 
   <option value="estoque">
-    Acessório ou embalagem
-  </option>
+  Acessório
+</option>
+
+<option value="embalagem">
+  Embalagem Premium
+</option>
 </select>
 
             {tipoItem === 'produto' && (
-              <select
-                value={produtoId}
-                onChange={(e) => selecionarProduto(e.target.value)}
-                className="border rounded-xl px-4 py-3"
-              >
-                <option value="">Selecione um produto</option>
+  <select
+    value={produtoId}
+    onChange={(e) =>
+      selecionarProduto(e.target.value)
+    }
+    className="border rounded-xl px-4 py-3"
+  >
+    <option value="">
+      Selecione um produto
+    </option>
 
-                {produtos.map(produto => (
-                  <option key={produto.id} value={produto.id}>
-                    {produto.nome}
-                  </option>
-                ))}
-              </select>
-            )}
+    {produtos.map(produto => (
+      <option
+        key={produto.id}
+        value={produto.id}
+      >
+        {produto.nome}
+      </option>
+    ))}
+  </select>
+)}
 
-            {tipoItem === 'kit' && (
-              <select
-                value={kitId}
-                onChange={(e) => selecionarKit(e.target.value)}
-                className="border rounded-xl px-4 py-3"
-              >
-                <option value="">Selecione um kit</option>
+{tipoItem === 'kit' && (
+  <select
+    value={kitId}
+    onChange={(e) =>
+      selecionarKit(e.target.value)
+    }
+    className="border rounded-xl px-4 py-3"
+  >
+    <option value="">
+      Selecione um kit
+    </option>
 
-                {kits.map(kit => (
-                  <option key={kit.id} value={kit.id}>
-                    {kit.nome}
-                  </option>
-                ))}
-              </select>
-            )}
+    {kits.map(kit => (
+      <option
+        key={kit.id}
+        value={kit.id}
+      >
+        {kit.nome}
+      </option>
+    ))}
+  </select>
+)}
 
-            {tipoItem === 'estoque' && (
+{tipoItem === 'estoque' && (
   <select
     value={estoqueId}
     onChange={(e) =>
@@ -501,50 +577,50 @@ valor_final: calcularTotalCartao(),
     className="border rounded-xl px-4 py-3"
   >
     <option value="">
-      Selecione um item
+      Selecione um acessório
     </option>
 
-    <optgroup label="Acessórios">
-      {itensVendaveis
-        .filter(
-          item =>
-            item.categoria_item ===
-            'acessorio'
-        )
-        .map(item => (
-          <option
-            key={item.id}
-            value={item.id}
-          >
-            {item.nome}
-            {' — '}
-            {formatarMoeda(
-              item.preco_venda
-            )}
-          </option>
-        ))}
-    </optgroup>
+    {itensVendaveis.map(item => (
+      <option
+        key={item.id}
+        value={item.id}
+      >
+        {item.nome}
+        {' — '}
+        {formatarMoeda(
+          item.preco_venda
+        )}
+      </option>
+    ))}
+  </select>
+)}
 
-    <optgroup label="Embalagens">
-      {itensVendaveis
-        .filter(
-          item =>
-            item.categoria_item ===
-            'embalagem'
-        )
-        .map(item => (
-          <option
-            key={item.id}
-            value={item.id}
-          >
-            {item.nome}
-            {' — '}
-            {formatarMoeda(
-              item.preco_venda
-            )}
-          </option>
-        ))}
-    </optgroup>
+{tipoItem === 'embalagem' && (
+  <select
+    value={estoqueId}
+    onChange={(e) =>
+      selecionarItemVendavel(
+        e.target.value
+      )
+    }
+    className="border rounded-xl px-4 py-3"
+  >
+    <option value="">
+      Selecione uma embalagem premium
+    </option>
+
+    {embalagensPremium.map(item => (
+      <option
+        key={item.id}
+        value={item.id}
+      >
+        {item.nome}
+        {' — '}
+        {formatarMoeda(
+          item.preco_venda
+        )}
+      </option>
+    ))}
   </select>
 )}
 
@@ -586,17 +662,17 @@ valor_final: calcularTotalCartao(),
             </p>
           )}
 
-          {tipoItem === 'estoque' &&
-  itemVendavelSelecionado() && (
-    <p className="text-xs text-green-700 mb-4">
-      Preço de venda:
-      {' '}
-      {formatarMoeda(
-        itemVendavelSelecionado()
-          ?.preco_venda
-      )}
-    </p>
-  )}
+          {(
+  tipoItem === 'estoque' ||
+  tipoItem === 'embalagem'
+) && estoqueId && (
+  <p className="text-xs text-green-700 mb-4">
+    Preço de venda:{' '}
+    {formatarMoeda(
+      valorUnitario
+    )}
+  </p>
+)}
 
           {itens.length === 0 ? (
             <p className="text-gray-500 text-sm">

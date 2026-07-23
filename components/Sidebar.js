@@ -5,11 +5,11 @@ import { useRouter } from 'next/router'
 export default function Sidebar() {
   const router = useRouter()
 
-  const estaNoFinanceiro = router.pathname.startsWith('/financeiro')
+  const estaNoFinanceiro =
+    router.pathname.startsWith('/financeiro')
 
-  const [financeiroAberto, setFinanceiroAberto] = useState(
-    estaNoFinanceiro
-  )
+  const [financeiroAberto, setFinanceiroAberto] =
+    useState(estaNoFinanceiro)
 
   function linkAtivo(caminho) {
     return router.pathname === caminho
@@ -29,14 +29,31 @@ export default function Sidebar() {
     `
   }
 
+  function classeSubmenu(caminho) {
+    return `
+      px-3 py-2
+      rounded-lg
+      text-sm
+      transition
+      ${
+        linkAtivo(caminho)
+          ? 'bg-gray-800 text-white font-semibold'
+          : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+      }
+    `
+  }
+
   return (
-    <aside className="w-64 bg-gray-900 text-white p-6 min-h-screen">
+    <aside className="w-64 bg-gray-900 text-white p-6 min-h-screen shrink-0">
       <h1 className="text-2xl font-bold mb-10">
         Eternae ERP
       </h1>
 
       <nav className="flex flex-col gap-2">
-        <Link href="/" className={classeLink('/')}>
+        <Link
+          href="/"
+          className={classeLink('/')}
+        >
           🏠 Dashboard
         </Link>
 
@@ -107,7 +124,9 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() =>
-              setFinanceiroAberto(!financeiroAberto)
+              setFinanceiroAberto(
+                !financeiroAberto
+              )
             }
             className={`
               w-full
@@ -132,69 +151,46 @@ export default function Sidebar() {
           {financeiroAberto && (
             <div className="mt-2 ml-4 pl-3 border-l border-gray-700 flex flex-col gap-1">
               <Link
+                href="/financeiro/dashboard"
+                className={classeSubmenu(
+                  '/financeiro/dashboard'
+                )}
+              >
+                📊 Dashboard Financeiro
+              </Link>
+
+              <Link
                 href="/financeiro"
-                className={`
-                  px-3 py-2
-                  rounded-lg
-                  text-sm
-                  transition
-                  ${
-                    linkAtivo('/financeiro')
-                      ? 'bg-gray-800 text-white font-semibold'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                  }
-                `}
+                className={classeSubmenu(
+                  '/financeiro'
+                )}
               >
                 📋 Fluxo de Caixa
               </Link>
 
               <Link
                 href="/financeiro/receber"
-                className={`
-                  px-3 py-2
-                  rounded-lg
-                  text-sm
-                  transition
-                  ${
-                    linkAtivo('/financeiro/receber')
-                      ? 'bg-gray-800 text-white font-semibold'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                  }
-                `}
+                className={classeSubmenu(
+                  '/financeiro/receber'
+                )}
               >
                 💰 Contas a Receber
               </Link>
 
               <Link
                 href="/financeiro/pagar"
-                className={`
-                  px-3 py-2
-                  rounded-lg
-                  text-sm
-                  transition
-                  ${
-                    linkAtivo('/financeiro/pagar')
-                      ? 'bg-gray-800 text-white font-semibold'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                  }
-                `}
+                className={classeSubmenu(
+                  '/financeiro/pagar'
+                )}
               >
                 🧾 Contas a Pagar
               </Link>
 
               <Link
                 href="/financeiro/dre"
-                className={`
-                  px-3 py-2
-                  rounded-lg
-                  text-sm
-                  transition
-                  ${
-                    linkAtivo('/financeiro/dre')
-                      ? 'bg-gray-800 text-white font-semibold'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                  }
-                `}
+                className={classeSubmenu(
+                  '/financeiro/dre'
+                )}
               >
                 📊 DRE
               </Link>
@@ -211,7 +207,9 @@ export default function Sidebar() {
 
         <Link
           href="/configuracoes"
-          className={classeLink('/configuracoes')}
+          className={classeLink(
+            '/configuracoes'
+          )}
         >
           ⚙️ Configurações
         </Link>

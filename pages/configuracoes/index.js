@@ -37,11 +37,17 @@ const [mostrarDescontoPix, setMostrarDescontoPix] = useState(true)
 const [formaPagamentoPadrao, setFormaPagamentoPadrao] = useState('Cartão')
 
 const [validadeOrcamentoDias, setValidadeOrcamentoDias] = useState('7')
+const [configSistemaId, setConfigSistemaId] = useState(null)
+
+const [embalagemPadrao, setEmbalagemPadrao] = useState('3')
+
+const [sacolasPorPedido, setSacolasPorPedido] = useState('1')
 
   useEffect(() => {
-    carregarConfiguracoes()
-    carregarConfiguracoesPrecificacao()
-  }, [])
+  carregarConfiguracoes()
+  carregarConfiguracoesPrecificacao()
+  carregarConfiguracoesSistema()
+}, [])
 
   async function carregarConfiguracoes() {
     const { data, error } = await supabase
@@ -117,6 +123,32 @@ setValidadeOrcamentoDias(
   config.validade_orcamento_dias ?? 7
 )
   }
+
+  async function carregarConfiguracoesSistema() {
+  const { data, error } = await supabase
+    .from('configuracoes_sistema')
+    .select('*')
+    .limit(1)
+
+  if (error) {
+    console.log('Erro ao carregar configurações do sistema:', error)
+    return
+  }
+
+  const config = data?.[0]
+
+  if (!config) return
+
+  setConfigSistemaId(config.id)
+
+  setEmbalagemPadrao(
+    config.embalagem_padrao ?? 3
+  )
+
+  setSacolasPorPedido(
+    config.quantidade_sacolas_por_pedido ?? 1
+  )
+}
 
   async function salvarConfiguracoes() {
     const dadosEmpresa = {
@@ -210,6 +242,22 @@ setValidadeOrcamentoDias(
       alert('Erro ao salvar parâmetros financeiros.')
       return
     }
+
+    const dadosSistema = {
+  embalagem_padrao: Number(
+    embalagemPadrao || 0
+  ),
+
+  quantidade_sacolas_por_pedido:
+    Number(sacolasPorPedido || 1)
+}
+
+if (configSistemaId) {
+  await supabase
+    .from('configuracoes_sistema')
+    .update(dadosSistema)
+    .eq('id', configSistemaId)
+}
 
     alert('Configurações salvas com sucesso!')
   }
@@ -640,6 +688,87 @@ setValidadeOrcamentoDias(
 </div>
 
         </div>
+
+        <div className="bg-white rounded-2xl p-8 shadow-sm mb-8">
+
+  <h2 className="text-xl font-bold text-gray-800 mb-6">
+    Embalagens e custos operacionais
+  </h2>
+
+  <div className="grid grid-cols-2 gap-4">
+
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Embalagem padrão (R$)
+      </label>
+
+      <input
+        type="number"
+        step="0.01"
+        value={embalagemPadrao}
+        onChange={(e) =>
+          setEmbalagemPadrao(
+            e.target.value
+          )
+        }
+        className="w-full border rounded-xl px-4 py-3"
+      />
+
+      <p className="text-xs text-gray-500 mt-2">
+        Custo interno utilizado na
+        precificação dos produtos e kits.
+      </p>
+    </div>
+
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Sacolas automáticas por pedido
+      </label>
+
+      <input
+        type="number"
+        value={sacolasPorPedido}
+        onChange={(e) =>
+          setSacolasPorPedido(
+            e.target.value
+          )
+        }
+        className="w-full border rounded-xl px-4 py-3"
+      />
+
+      <p className="text-xs text-gray-500 mt-2">
+        Quantidade padrão baixada do
+        estoque por pedido.
+      </p>
+    </div>
+
+  </div>
+
+  <div className="mt-6 p-5 rounded-2xl bg-purple-50 border border-purple-100">
+
+    <h3 className="font-semibold text-gray-800 mb-3">
+      Regras atuais
+    </h3>
+
+    <ul className="text-sm text-gray-600 space-y-2">
+
+      <li>
+        📦 Embalagem padrão → custo interno.
+      </li>
+
+      <li>
+        🛍 Sacola → baixa automática por pedido.
+      </li>
+
+      <li>
+        🎁 Caixa MDF → item opcional vendido.
+      </li>
+
+    </ul>
+
+  </div>
+
+</div>
 
         <div className="flex justify-end">
           <button

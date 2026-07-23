@@ -20,6 +20,10 @@ export default function PrecificacaoDrawer({
   const [margemEdicao, setMargemEdicao] = useState('')
   const [insumosEdicao, setInsumosEdicao] = useState([])
   const [estoque, setEstoque] = useState([])
+  const [
+  configuracaoSistema,
+  setConfiguracaoSistema
+] = useState(null)
   const [novoInsumo, setNovoInsumo] = useState('')
   const [novaQuantidade, setNovaQuantidade] = useState(1)
   const [
@@ -44,6 +48,18 @@ export default function PrecificacaoDrawer({
     }
 
     carregarEstoque()
+
+    async function carregarConfiguracoesSistema() {
+  const { data } = await supabase
+    .from('configuracoes_sistema')
+    .select('*')
+    .limit(1)
+    .single()
+
+  setConfiguracaoSistema(data)
+}
+
+carregarConfiguracoesSistema()
 
     if (modoNovoCadastro) {
       setProdutoNovoSelecionado('')
@@ -228,6 +244,13 @@ function custoAcessorios() {
   return custoPorCategoria('acessorio')
 }
 
+function custoEmbalagemPadrao() {
+  return Number(
+    configuracaoSistema
+      ?.embalagem_padrao || 0
+  )
+}
+
   function horasProduto() {
   const tempoUtilizado =
     modoEdicao || modoNovoCadastro
@@ -246,12 +269,13 @@ function custoAcessorios() {
   }
 
   function custoTotalProduto() {
-    return (
-      custoInsumos() +
-      custoMaoDeObra() +
-      custoFixoProduto()
-    )
-  }
+  return (
+    custoInsumos() +
+    custoEmbalagemPadrao() +
+    custoMaoDeObra() +
+    custoFixoProduto()
+  )
+}
 
   function margemProduto() {
   if (modoEdicao || modoNovoCadastro) {
@@ -1361,8 +1385,11 @@ function custoAcessorios() {
                     </p>
 
                     <p className="text-lg font-bold text-amber-800 mt-2">
-                      {formatarMoeda(custoEmbalagens())}
-                    </p>
+  {formatarMoeda(
+    custoEmbalagens() +
+    custoEmbalagemPadrao()
+  )}
+</p>
                   </div>
 
                   <div className="bg-violet-50 border border-violet-100 rounded-xl p-4">
@@ -1408,6 +1435,18 @@ function custoAcessorios() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
 
                   <div className="bg-gray-50 rounded-xl p-4">
+                    <div className="bg-gray-50 rounded-xl p-4">
+  <p className="text-sm text-gray-500">
+    Embalagem padrão
+  </p>
+
+  <p className="text-lg font-bold text-gray-800 mt-2">
+    {formatarMoeda(
+      custoEmbalagemPadrao()
+    )}
+  </p>
+</div>
+                    
                     <p className="text-sm text-gray-500">
                       Materiais
                     </p>

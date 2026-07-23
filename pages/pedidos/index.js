@@ -436,6 +436,48 @@ const [pedidoParaCancelar, setPedidoParaCancelar] = useState(null)
     })
   }
 
+  /*
+  Sacola automática por pedido
+*/
+const {
+  data: configuracaoSistema
+} = await supabase
+  .from('configuracoes_sistema')
+  .select('*')
+  .limit(1)
+  .single()
+
+const quantidadeSacolas =
+  Number(
+    configuracaoSistema
+      ?.quantidade_sacolas_por_pedido || 0
+  )
+
+if (quantidadeSacolas > 0) {
+  const {
+    data: sacola
+  } = await supabase
+    .from('estoque')
+    .select(`
+      id,
+      nome
+    `)
+    .ilike('nome', '%sacola%')
+    .limit(1)
+    .single()
+
+  if (sacola) {
+    consumoTotalEstoque[
+      sacola.id
+    ] =
+      Number(
+        consumoTotalEstoque[
+          sacola.id
+        ] || 0
+      ) + quantidadeSacolas
+  }
+}
+
   const estoqueIds =
     Object.keys(consumoTotalEstoque)
 
@@ -573,18 +615,7 @@ const [pedidoParaCancelar, setPedidoParaCancelar] = useState(null)
       etapa_producao: novaEtapa
     }
 
-    if (
-      novaEtapa === 'Pronto' &&
-      !pedido.estoque_baixado
-    ) {
-      const baixou = await baixarEstoqueDoPedido(pedido)
-
-      if (!baixou) return
-
-      dadosAtualizacao.estoque_baixado = true
-    }
-
-    const { data, error } = await supabase
+      const { data, error } = await supabase
       .from('pedidos')
       .update(dadosAtualizacao)
       .eq('id', pedido.id)
@@ -651,56 +682,109 @@ await carregarPedidos()
   }
 
   async function cancelarPedido(pedido) {
-    const etapaAtual = etapaPedido(pedido)
+  const etapaAtual = etapaPedido(pedido)
 
-    if (etapaAtual === 'Cancelado') return
+  if (etapaAtual === 'Cancelado') {
+    return
+  }
 
-    if (statusPagamento(pedido) === 'Recebido') {
-      const confirmarPago = confirm(
-        'Este pedido já possui pagamento recebido. Deseja cancelar mesmo assim? Verifique se será necessário reembolso.'
-      )
+  const etapasPermitidas = [
+    'Aguardando Pagamento',
+    'Arte',
+    'Aguardando Aprovação'
+  ]
 
-      if (!confirmarPago) return
-    }
+  if (!etapasPermitidas.includes(etapaAtual)) {
+    alert(
+      'Este pedido não pode mais ser cancelado. Após o início da produção, utilize o fluxo de ocorrência ou pós-venda.'
+    )
+    return
+  }
 
-    const confirmar = confirm(
-      'Deseja cancelar este pedido? Ele continuará no histórico, mas sairá do fluxo ativo.'
+  if (statusPagamento(pedido) === 'Recebido') {
+    const confirmarPago = confirm(
+      'Este pedido já possui pagamento recebido. Deseja cancelar mesmo assim? Verifique se será necessário realizar um reembolso.'
     )
 
-    if (!confirmar) return
-
-    const { error: erroPedido } = await supabase
-      .from('pedidos')
-      .update({
-        etapa_producao: 'Cancelado',
-        status: 'Cancelado'
-      })
-      .eq('id', pedido.id)
-
-    if (erroPedido) {
-      console.log('Erro ao cancelar pedido:', erroPedido)
-      alert('Erro ao cancelar pedido.')
+    if (!confirmarPago) {
       return
     }
-
-    const { error: erroFinanceiro } = await supabase
-      .from('financeiro')
-      .update({
-        status: 'Cancelado'
-      })
-      .eq('pedido_id', pedido.id)
-      .eq('status', 'Pendente')
-
-    if (erroFinanceiro) {
-      console.log('Erro ao cancelar financeiro:', erroFinanceiro)
-      alert('Pedido cancelado, mas houve erro ao cancelar cobrança pendente.')
-      await carregarPedidos()
-      return
-    }
-
-    alert('Pedido cancelado com sucesso!')
-    await carregarPedidos()
   }
+
+  const confirmar = confirm(
+    'Deseja cancelar este pedido? Ele continuará no histórico, mas sairá do fluxo ativo.'
+  )
+
+  if (!confirmar) {
+    return
+  }
+
+  const dataCancelamento = new Date().toISOString()
+
+  const { error: erroPedido } = await supabase
+    .from('pedidos')
+    .update({
+      etapa_producao: 'Cancelado',
+      status: 'Cancelado',
+      data_cancelamento: dataCancelamento
+    })
+    .eq('id', pedido.id)
+
+  if (erroPedido) {
+    console.log(
+      'Erro ao cancelar pedido:',
+      erroPedido
+    )
+
+    alert('Erro ao cancelar pedido.')
+    return
+  }
+
+  const { error: erroFinanceiro } = await supabase
+    .from('financeiro')
+    .update({
+      status: 'Cancelado'
+    })
+    .eq('pedido_id', pedido.id)
+    .eq('status', 'Pendente')
+
+  if (erroFinanceiro) {
+    console.log(
+      'Erro ao cancelar financeiro:',
+      erroFinanceiro
+    )
+
+    alert(
+      'Pedido cancelado, mas houve erro ao cancelar a cobrança pendente.'
+    )
+
+    await carregarPedidos()
+    return
+  }
+
+  const { error: erroTimeline } = await supabase
+    .from('pedido_timeline')
+    .insert([
+      {
+        pedido_id: pedido.id,
+        titulo: 'Pedido cancelado',
+        descricao:
+          'O pedido foi cancelado e retirado do fluxo ativo.',
+        tipo: 'erro'
+      }
+    ])
+
+  if (erroTimeline) {
+    console.log(
+      'Erro ao registrar cancelamento na timeline:',
+      erroTimeline
+    )
+  }
+
+  alert('Pedido cancelado com sucesso!')
+
+  await carregarPedidos()
+}
 
   async function gerarCobranca(pedido) {
     const confirmar = confirm('Deseja gerar cobrança para este pedido?')
@@ -827,12 +911,19 @@ await carregarPedidos()
 }
 
 async function confirmarPrazoProducao(prazoDias) {
-  if (!pedidoPrazo) return
+  if (!pedidoPrazo) {
+    return
+  }
 
   const prazoNumero = Number(prazoDias)
 
-  if (!Number.isInteger(prazoNumero) || prazoNumero <= 0) {
-    alert('Informe um prazo válido em dias úteis.')
+  if (
+    !Number.isInteger(prazoNumero) ||
+    prazoNumero <= 0
+  ) {
+    alert(
+      'Informe um prazo válido em dias úteis.'
+    )
     return
   }
 
@@ -841,58 +932,104 @@ async function confirmarPrazoProducao(prazoDias) {
 
   let diasUteisAdicionados = 0
 
-  while (diasUteisAdicionados < prazoNumero) {
-    dataPrevista.setDate(dataPrevista.getDate() + 1)
+  while (
+    diasUteisAdicionados < prazoNumero
+  ) {
+    dataPrevista.setDate(
+      dataPrevista.getDate() + 1
+    )
 
-    const diaSemana = dataPrevista.getDay()
+    const diaSemana =
+      dataPrevista.getDay()
 
-    if (diaSemana !== 0 && diaSemana !== 6) {
+    if (
+      diaSemana !== 0 &&
+      diaSemana !== 6
+    ) {
       diasUteisAdicionados++
     }
   }
 
   function formatarDataBanco(data) {
     const ano = data.getFullYear()
-    const mes = String(data.getMonth() + 1).padStart(2, '0')
-    const dia = String(data.getDate()).padStart(2, '0')
+
+    const mes = String(
+      data.getMonth() + 1
+    ).padStart(2, '0')
+
+    const dia = String(
+      data.getDate()
+    ).padStart(2, '0')
 
     return `${ano}-${mes}-${dia}`
   }
 
-  const { error: erroPedido } = await supabase
-    .from('pedidos')
-    .update({
-      etapa_producao: 'Produção',
-      data_inicio_producao: dataInicio.toISOString(),
-      prazo_producao_dias: prazoNumero,
-      data_prevista_entrega: formatarDataBanco(dataPrevista)
-    })
-    .eq('id', pedidoPrazo.id)
+  /*
+    A baixa acontece no início da produção.
+    Se já foi realizada anteriormente, não
+    deve ser repetida.
+  */
+  if (!pedidoPrazo.estoque_baixado) {
+    const baixou =
+      await baixarEstoqueDoPedido(
+        pedidoPrazo
+      )
+
+    if (!baixou) {
+      return
+    }
+  }
+
+  const { error: erroPedido } =
+    await supabase
+      .from('pedidos')
+      .update({
+        etapa_producao: 'Produção',
+        data_inicio_producao:
+          dataInicio.toISOString(),
+        prazo_producao_dias:
+          prazoNumero,
+        data_prevista_entrega:
+          formatarDataBanco(
+            dataPrevista
+          ),
+        estoque_baixado: true
+      })
+      .eq('id', pedidoPrazo.id)
 
   if (erroPedido) {
-    console.log('Erro ao iniciar produção:', erroPedido)
-    alert('Erro ao iniciar a produção.')
+    console.log(
+      'Erro ao iniciar produção:',
+      erroPedido
+    )
+
+    alert(
+      'O estoque foi baixado, mas houve erro ao atualizar o pedido. Verifique o pedido antes de tentar novamente.'
+    )
+
     return
   }
 
-  const { error: erroTimeline } = await supabase
-    .from('pedido_timeline')
-    .insert([
-      {
-        pedido_id: pedidoPrazo.id,
-        titulo: 'Arte aprovada',
-        descricao:
-          'A arte foi aprovada pelo cliente.',
-        tipo: 'sucesso'
-      },
-      {
-        pedido_id: pedidoPrazo.id,
-        titulo: 'Produção iniciada',
-        descricao:
-          `Produção iniciada com prazo de ${prazoNumero} dias úteis. Previsão: ${dataPrevista.toLocaleDateString('pt-BR')}.`,
-        tipo: 'informacao'
-      }
-    ])
+  const { error: erroTimeline } =
+    await supabase
+      .from('pedido_timeline')
+      .insert([
+        {
+          pedido_id: pedidoPrazo.id,
+          titulo: 'Arte aprovada',
+          descricao:
+            'A arte foi aprovada pelo cliente.',
+          tipo: 'sucesso'
+        },
+        {
+          pedido_id: pedidoPrazo.id,
+          titulo: 'Produção iniciada',
+          descricao: `Produção iniciada com prazo de ${prazoNumero} dias úteis. Previsão: ${dataPrevista.toLocaleDateString(
+            'pt-BR'
+          )}. O estoque dos materiais foi baixado.`,
+          tipo: 'informacao'
+        }
+      ])
 
   if (erroTimeline) {
     console.log(
@@ -911,7 +1048,9 @@ async function confirmarPrazoProducao(prazoDias) {
   await carregarPedidos()
 
   alert(
-    `Produção iniciada! Previsão: ${dataPrevista.toLocaleDateString('pt-BR')}.`
+    `Produção iniciada! Estoque baixado. Previsão: ${dataPrevista.toLocaleDateString(
+      'pt-BR'
+    )}.`
   )
 }
 

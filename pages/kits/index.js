@@ -11,6 +11,10 @@ export default function Kits() {
   const [openModalKit, setOpenModalKit] =
   useState(false)
   const [itensKit, setItensKit] = useState([])
+  const [
+  configuracaoSistema,
+  setConfiguracaoSistema
+] = useState(null)
 
   const [nome, setNome] = useState('')
   const [descricao, setDescricao] = useState('')
@@ -50,6 +54,7 @@ const [quantidade, setQuantidade] =
           categoria,
           categoria_item,
           vendavel,
+          embalagem_premium,
           preco_venda,
           custo_unitario,
           unidade
@@ -95,6 +100,7 @@ const [quantidade, setQuantidade] =
       categoria,
       categoria_item,
       vendavel,
+      embalagem_premium,
       preco_venda,
       custo_unitario,
       quantidade_disponivel,
@@ -126,6 +132,16 @@ const [quantidade, setQuantidade] =
   setItensVendaveis(data || [])
 }
 
+async function carregarConfiguracaoSistema() {
+  const { data } = await supabase
+    .from('configuracoes_sistema')
+    .select('*')
+    .limit(1)
+    .single()
+
+  setConfiguracaoSistema(data)
+}
+
   async function carregarItensKit(kitId) {
   const { data, error } = await supabase
     .from('kit_itens')
@@ -149,6 +165,7 @@ const [quantidade, setQuantidade] =
         categoria,
         categoria_item,
         vendavel,
+        embalagem_premium,
         preco_venda,
         custo_unitario,
         unidade
@@ -174,6 +191,7 @@ const [quantidade, setQuantidade] =
   carregarKits()
   carregarProdutos()
   carregarItensVendaveis()
+  carregarConfiguracaoSistema()
 }, [])
 
   function formatarMoeda(valor) {
@@ -636,6 +654,25 @@ alert('Kit criado com sucesso!')
     .join(', ')
 }
 
+  function kitPossuiEmbalagemPremium() {
+    return itensKit.some(item =>
+    item.estoque?.embalagem_premium
+  )
+}
+
+function custoEmbalagemKit() {
+  if (
+    kitPossuiEmbalagemPremium()
+  ) {
+    return 0
+  }
+
+  return Number(
+    configuracaoSistema
+      ?.embalagem_padrao || 0
+  )
+}
+
   function subtotalProdutos() {
     return calcularSubtotal(itensKit)
   }
@@ -651,8 +688,11 @@ alert('Kit criado com sucesso!')
   }
 
   function custoEstimadoKit() {
-    return calcularCusto(itensKit)
-  }
+  return (
+    calcularCusto(itensKit) +
+    custoEmbalagemKit()
+  )
+}
 
   function lucroEstimadoKit() {
     return precoFinalKit() - custoEstimadoKit()
@@ -1257,7 +1297,7 @@ alert('Kit criado com sucesso!')
         </table>
       </div>
 
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-6 gap-4">
         <div className="bg-gray-50 rounded-xl p-4">
           <p className="text-sm text-gray-500">Valor individual</p>
           <p className="font-semibold text-gray-800">
@@ -1278,6 +1318,26 @@ alert('Kit criado com sucesso!')
             {formatarMoeda(precoFinalKit())}
           </p>
         </div>
+
+<div className="bg-gray-50 rounded-xl p-4">
+
+  <p className="text-sm text-gray-500">
+    Embalagem
+  </p>
+
+  <p className="font-semibold text-gray-800">
+    {formatarMoeda(
+      custoEmbalagemKit()
+    )}
+  </p>
+
+  {kitPossuiEmbalagemPremium() && (
+    <p className="text-xs text-green-600 mt-2">
+      Embalagem premium detectada
+    </p>
+  )}
+
+</div>
 
         <div className="bg-green-50 rounded-xl p-4">
           <p className="text-sm text-green-700">Lucro estimado</p>
