@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import Sidebar from '../components/Sidebar'
-import StatCard from '../components/StatCard'
 import { supabase } from '../lib/supabase'
 import GraficoEvolucaoFinanceira from '../components/dashboard/GraficoEvolucaoFinanceira'
 import GraficoDespesasCategoria from '../components/dashboard/GraficoDespesasCategoria'
@@ -16,20 +15,44 @@ export default function Home() {
   const [estoque, setEstoque] = useState([])
   const [configuracao, setConfiguracao] = useState(null)
   const [movimentacoesDashboard, setMovimentacoesDashboard] = useState([])
+  const [carregando, setCarregando] = useState(true)
+  const [erroDashboard, setErroDashboard] = useState('')
 
   useEffect(() => {
     carregarDashboard()
   }, [])
 
   async function carregarDashboard() {
-  await carregarConfiguracao()
-  await carregarFinanceiroMes()
-  await carregarMovimentacoesDashboard()
-  await carregarRecebimentosPendentes()
-  await carregarPedidos()
-  await carregarEstoque()
-  await carregarAniversariantes()
-}
+    setCarregando(true)
+    setErroDashboard('')
+
+    const resultados = await Promise.allSettled([
+      carregarConfiguracao(),
+      carregarFinanceiroMes(),
+      carregarMovimentacoesDashboard(),
+      carregarRecebimentosPendentes(),
+      carregarPedidos(),
+      carregarEstoque(),
+      carregarAniversariantes()
+    ])
+
+    const falhas = resultados.filter(
+      resultado => resultado.status === 'rejected'
+    )
+
+    if (falhas.length > 0) {
+      console.error(
+        'Falha ao carregar o Dashboard:',
+        falhas.map(falha => falha.reason)
+      )
+
+      setErroDashboard(
+        'Não foi possível carregar todos os dados do Dashboard. Tente novamente.'
+      )
+    }
+
+    setCarregando(false)
+  }
 
   async function carregarConfiguracao() {
     const { data, error } = await supabase
@@ -40,78 +63,83 @@ export default function Home() {
 
     if (error) {
       console.log('Erro ao carregar configuração:', error)
-      return
+      throw error
     }
 
     setConfiguracao(data)
   }
 
   async function carregarFinanceiroMes() {
-  const hoje = new Date()
+    const hoje = new Date()
 
-  const primeiroDia = new Date(
-    hoje.getFullYear(),
-    hoje.getMonth(),
-    1
-  )
-
-  const proximoMes = new Date(
-    hoje.getFullYear(),
-    hoje.getMonth() + 1,
-    1
-  )
-
-  function formatarDataBanco(data) {
-    const ano = data.getFullYear()
-    const mes = String(data.getMonth() + 1).padStart(2, '0')
-    const dia = String(data.getDate()).padStart(2, '0')
-
-    return `${ano}-${mes}-${dia}`
-  }
-
-  const { data, error } = await supabase
-    .from('movimentacoes_financeiras')
-    .select(`
-      tipo,
-      valor,
-      data_movimento
-    `)
-    .gte(
-      'data_movimento',
-      formatarDataBanco(primeiroDia)
-    )
-    .lt(
-      'data_movimento',
-      formatarDataBanco(proximoMes)
+    const primeiroDia = new Date(
+      hoje.getFullYear(),
+      hoje.getMonth(),
+      1
     )
 
-  if (error) {
-    console.log(
-      'Erro ao carregar movimentações do mês:',
-      error
+    const proximoMes = new Date(
+      hoje.getFullYear(),
+      hoje.getMonth() + 1,
+      1
     )
-    return
-  }
 
-  const entradas = (data || [])
-    .filter(item => item.tipo === 'Entrada')
-    .reduce(
-      (total, item) =>
-        total + Number(item.valor || 0),
+    function formatarDataBanco(data) {
+      const ano = data.getFullYear()
+      const mes = String(data.getMonth() + 1).padStart(2, '0')
+      const dia = String(data.getDate()).padStart(2, '0')
+
+      return `${ano}-${mes}-${dia}`
+    }
+
+    const inicioMes = formatarDataBanco(primeiroDia)
+    const inicioProximoMes = formatarDataBanco(proximoMes)
+
+    const [resultadoReceitas, resultadoDespesas] = await Promise.all([
+      supabase
+        .from('financeiro')
+        .select('valor, status, data_pagamento')
+        .eq('status', 'Recebido')
+        .gte('data_pagamento', inicioMes)
+        .lt('data_pagamento', inicioProximoMes),
+      supabase
+        .from('contas_pagar')
+        .select('valor, data_vencimento, status')
+        .gte('data_vencimento', inicioMes)
+        .lt('data_vencimento', inicioProximoMes)
+    ])
+
+    if (resultadoReceitas.error) {
+      console.log(
+        'Erro ao carregar receitas recebidas do mês:',
+        resultadoReceitas.error
+      )
+      throw resultadoReceitas.error
+    }
+
+    if (resultadoDespesas.error) {
+      console.log(
+        'Erro ao carregar despesas do mês:',
+        resultadoDespesas.error
+      )
+      throw resultadoDespesas.error
+    }
+
+    const totalReceitas = (resultadoReceitas.data || []).reduce(
+      (total, item) => total + Number(item.valor || 0),
       0
     )
 
-  const saidas = (data || [])
-    .filter(item => item.tipo === 'Saída')
-    .reduce(
-      (total, item) =>
-        total + Number(item.valor || 0),
-      0
-    )
+    const totalDespesas = (resultadoDespesas.data || [])
+      .filter(item => item.status !== 'cancelado')
+      .reduce(
+        (total, item) => total + Number(item.valor || 0),
+        0
+      )
 
-  setFaturadoMes(entradas)
-  setSaidasMes(saidas)
-}
+    setFaturadoMes(totalReceitas)
+    setSaidasMes(totalDespesas)
+  }
 
 async function carregarMovimentacoesDashboard() {
   const { data, error } = await supabase
@@ -129,7 +157,7 @@ async function carregarMovimentacoesDashboard() {
       'Erro ao carregar movimentações do Dashboard:',
       error
     )
-    return
+    throw error
   }
 
   setMovimentacoesDashboard(data || [])
@@ -149,7 +177,7 @@ async function carregarMovimentacoesDashboard() {
 
     if (error) {
       console.log('Erro ao carregar recebimentos pendentes:', error)
-      return
+      throw error
     }
 
     setRecebimentosPendentes(data || [])
@@ -166,6 +194,11 @@ async function carregarMovimentacoesDashboard() {
       financeiro (
         id,
         status
+      ),
+      producoes (
+        id,
+        status,
+        data_entrega
       ),
       orcamentos (
         id,
@@ -191,7 +224,7 @@ async function carregarMovimentacoesDashboard() {
       'Erro ao carregar pedidos do Dashboard:',
       error
     )
-    return
+    throw error
   }
 
   setPedidos(data || [])
@@ -205,7 +238,7 @@ async function carregarMovimentacoesDashboard() {
 
     if (error) {
       console.log('Erro ao carregar estoque:', error)
-      return
+      throw error
     }
 
     setEstoque(data || [])
@@ -218,7 +251,7 @@ async function carregarMovimentacoesDashboard() {
 
     if (error) {
       console.log('Erro ao carregar aniversariantes:', error)
-      return
+      throw error
     }
 
     const mesAtual = new Date().getMonth() + 1
@@ -379,119 +412,163 @@ async function carregarMovimentacoesDashboard() {
     })
   }
 
-  function ticketMedio() {
-  const entregues = pedidos.filter(
-    pedido =>
-      pedido.etapa_producao === 'Entregue' &&
-      !pedidoCancelado(pedido)
-  )
-
-  if (entregues.length === 0) {
-    return 0
+  function inicioMesAtual() {
+    const hoje = new Date()
+    return new Date(hoje.getFullYear(), hoje.getMonth(), 1)
   }
 
-  const totalEntregue = entregues.reduce(
-    (total, pedido) =>
-      total + Number(pedido.valor || 0),
-    0
-  )
+  function inicioProximoMes() {
+    const hoje = new Date()
+    return new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1)
+  }
 
-  return totalEntregue / entregues.length
-}
+  function dataEntregaPedido(pedido) {
+    const producoes = Array.isArray(pedido.producoes)
+      ? pedido.producoes
+      : pedido.producoes
+        ? [pedido.producoes]
+        : []
 
-function totalClientesAtendidos() {
-  const clientesAtendidos = new Set()
+    const datasEntrega = producoes
+      .filter(producao => producao?.data_entrega)
+      .map(producao => new Date(producao.data_entrega))
+      .filter(data => !Number.isNaN(data.getTime()))
+      .sort((a, b) => b - a)
 
-  pedidos.forEach(pedido => {
-    const entregue =
-      pedido.etapa_producao === 'Entregue'
-
-    const cancelado =
-      pedidoCancelado(pedido)
-
-    if (
-      entregue &&
-      !cancelado &&
-      pedido.cliente_id
-    ) {
-      clientesAtendidos.add(
-        pedido.cliente_id
-      )
+    if (datasEntrega.length > 0) {
+      return datasEntrega[0]
     }
-  })
 
-  return clientesAtendidos.size
-}
+    if (!pedido.created_at) return null
 
-function produtosMaisVendidos() {
-  const produtos = {}
+    const dataCriacao = new Date(pedido.created_at)
+    return Number.isNaN(dataCriacao.getTime()) ? null : dataCriacao
+  }
 
-  pedidos.forEach(pedido => {
-    if (pedidoCancelado(pedido)) return
+  function pedidoEntregue(pedido) {
+    if (pedidoCancelado(pedido)) return false
 
-    const itens =
-      pedido.orcamentos?.orcamento_itens || []
+    if (pedido.etapa_producao === 'Entregue') return true
 
-    itens.forEach(item => {
-      const nome =
-        item.nome_item ||
-        item.produtos?.nome ||
-        'Produto'
+    const producoes = Array.isArray(pedido.producoes)
+      ? pedido.producoes
+      : pedido.producoes
+        ? [pedido.producoes]
+        : []
 
-      produtos[nome] =
-        Number(produtos[nome] || 0) +
-        Number(item.quantidade || 0)
-    })
-  })
+    return producoes.some(producao => producao?.status === 'Entregue')
+  }
 
-  return Object.entries(produtos)
-    .map(([nome, quantidade]) => ({
-      nome,
-      quantidade
-    }))
-    .sort(
-      (a, b) =>
-        b.quantidade - a.quantidade
+  function pedidoEntregueNoMesAtual(pedido) {
+    if (!pedidoEntregue(pedido)) return false
+
+    const dataEntrega = dataEntregaPedido(pedido)
+    if (!dataEntrega) return false
+
+    return (
+      dataEntrega >= inicioMesAtual() &&
+      dataEntrega < inicioProximoMes()
     )
-    .slice(0, 5)
-}
+  }
 
-function produtosMaiorFaturamento() {
-  const mapa = {}
+  function pedidosEntreguesNoMes() {
+    return pedidos.filter(pedidoEntregueNoMesAtual)
+  }
 
-  pedidos.forEach(pedido => {
-    if (pedidoCancelado(pedido)) return
+  function saudacaoAtual() {
+    const hora = new Date().getHours()
 
-    const itens =
-      pedido.orcamentos?.orcamento_itens || []
+    if (hora < 12) return 'Bom dia'
+    if (hora < 18) return 'Boa tarde'
+    return 'Boa noite'
+  }
 
-    itens.forEach(item => {
-      const nome =
-        item.nome_item ||
-        item.produtos?.nome ||
-        'Produto'
+  function ticketMedio() {
+    const entregues = pedidosEntreguesNoMes()
 
-      mapa[nome] =
-        Number(mapa[nome] || 0) +
-        Number(item.subtotal || 0)
+    if (entregues.length === 0) return 0
+
+    const totalEntregue = entregues.reduce(
+      (total, pedido) => total + Number(pedido.valor || 0),
+      0
+    )
+
+    return totalEntregue / entregues.length
+  }
+
+  function totalClientesAtendidos() {
+    const clientesAtendidos = new Set()
+
+    pedidosEntreguesNoMes().forEach(pedido => {
+      if (pedido.cliente_id) {
+        clientesAtendidos.add(pedido.cliente_id)
+      }
     })
-  })
 
-  return Object.entries(mapa)
-    .map(([nome, total]) => ({
-      nome,
-      total
-    }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5)
-}
+    return clientesAtendidos.size
+  }
 
-function pedidosEntregues() {
-  return pedidos.filter(
-    p =>
-      p.etapa_producao === 'Entregue'
-  ).length
-}
+  function produtosMaisVendidos() {
+    const produtos = {}
+
+    pedidosEntreguesNoMes().forEach(pedido => {
+      const itens = pedido.orcamentos?.orcamento_itens || []
+
+      itens.forEach(item => {
+        const nome =
+          item.nome_item ||
+          item.produtos?.nome ||
+          'Produto'
+
+        produtos[nome] =
+          Number(produtos[nome] || 0) +
+          Number(item.quantidade || 0)
+      })
+    })
+
+    return Object.entries(produtos)
+      .map(([nome, quantidade]) => ({
+        nome,
+        quantidade
+      }))
+      .sort((a, b) => b.quantidade - a.quantidade)
+      .slice(0, 5)
+  }
+
+  function produtosMaiorFaturamento() {
+    const mapa = {}
+
+    pedidosEntreguesNoMes().forEach(pedido => {
+      const itens = pedido.orcamentos?.orcamento_itens || []
+
+      itens.forEach(item => {
+        const nome =
+          item.nome_item ||
+          item.produtos?.nome ||
+          'Produto'
+
+        mapa[nome] =
+          Number(mapa[nome] || 0) +
+          Number(item.subtotal || 0)
+      })
+    })
+
+    return Object.entries(mapa)
+      .map(([nome, total]) => ({
+        nome,
+        total
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5)
+  }
+
+  function pedidosEntreguesMes() {
+    return pedidosEntreguesNoMes().length
+  }
+
+  function momentosEternizados() {
+    return pedidos.filter(pedidoEntregue).length
+  }
 
 function dadosEvolucaoFinanceira() {
   const meses = {}
@@ -537,12 +614,23 @@ function dadosEvolucaoFinanceira() {
 
 function dadosDespesasCategoria() {
   const categorias = {}
+  const inicioMes = inicioMesAtual()
+  const proximoMes = inicioProximoMes()
 
   movimentacoesDashboard
-    .filter(item => item.tipo === 'Saída')
+    .filter(item => {
+      if (item.tipo !== 'Saída' || !item.data_movimento) return false
+
+      const data = new Date(`${item.data_movimento}T00:00:00`)
+
+      return (
+        !Number.isNaN(data.getTime()) &&
+        data >= inicioMes &&
+        data < proximoMes
+      )
+    })
     .forEach(item => {
-      const categoria =
-        item.categoria || 'Outros'
+      const categoria = item.categoria || 'Outros'
 
       categorias[categoria] =
         Number(categorias[categoria] || 0) +
@@ -563,6 +651,40 @@ function dadosDespesasCategoria() {
 
       <main className="flex-1 p-8">
 
+        {carregando ? (
+          <div className="min-h-[70vh] flex items-center justify-center">
+            <div className="bg-white rounded-2xl p-8 shadow-sm text-center max-w-md w-full">
+              <div className="w-12 h-12 border-4 border-gray-200 border-t-gray-900 rounded-full animate-spin mx-auto" />
+              <h2 className="text-xl font-bold text-gray-800 mt-5">
+                Carregando Dashboard
+              </h2>
+              <p className="text-gray-500 mt-2">
+                Organizando os dados da Eternaê...
+              </p>
+            </div>
+          </div>
+        ) : erroDashboard ? (
+          <div className="min-h-[70vh] flex items-center justify-center">
+            <div className="bg-white rounded-2xl p-8 shadow-sm text-center max-w-lg w-full">
+              <div className="text-4xl">⚠️</div>
+              <h2 className="text-xl font-bold text-gray-800 mt-4">
+                Não foi possível carregar o Dashboard
+              </h2>
+              <p className="text-gray-500 mt-2">
+                {erroDashboard}
+              </p>
+              <button
+                type="button"
+                onClick={carregarDashboard}
+                className="mt-6 bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-800">
             Dashboard
@@ -579,7 +701,7 @@ function dadosDespesasCategoria() {
 
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
   <h2 className="text-2xl font-bold text-gray-800">
-    Bom dia, Renata ☀️
+    {saudacaoAtual()}, Renata ☀️
   </h2>
 
   <p className="text-gray-500 mt-2 leading-relaxed">
@@ -887,7 +1009,7 @@ function dadosDespesasCategoria() {
 
   <div className="bg-white rounded-2xl p-6 shadow-sm">
     <p className="text-sm text-gray-500">
-      Ticket médio
+      Ticket médio do mês
     </p>
 
     <p className="text-3xl font-bold text-gray-800 mt-3">
@@ -897,7 +1019,7 @@ function dadosDespesasCategoria() {
 
   <div className="bg-white rounded-2xl p-6 shadow-sm">
     <p className="text-sm text-gray-500">
-      Clientes atendidos
+      Clientes atendidos no mês
     </p>
 
     <p className="text-3xl font-bold text-gray-800 mt-3">
@@ -907,11 +1029,11 @@ function dadosDespesasCategoria() {
 
   <div className="bg-white rounded-2xl p-6 shadow-sm">
     <p className="text-sm text-gray-500">
-      Pedidos entregues
+      Pedidos entregues no mês
     </p>
 
     <p className="text-3xl font-bold text-gray-800 mt-3">
-      {pedidosEntregues()}
+      {pedidosEntreguesMes()}
     </p>
   </div>
 
@@ -921,7 +1043,7 @@ function dadosDespesasCategoria() {
     </p>
 
     <p className="text-3xl font-bold text-gray-800 mt-3">
-      {pedidosEntregues()}
+      {momentosEternizados()}
     </p>
 
     <p className="text-xs text-gray-400 mt-2">
@@ -1108,6 +1230,9 @@ function dadosDespesasCategoria() {
           </div>
 
         </div>
+
+          </>
+        )}
 
       </main>
     </div>
