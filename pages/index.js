@@ -142,25 +142,68 @@ export default function Home() {
   }
 
 async function carregarMovimentacoesDashboard() {
-  const { data, error } = await supabase
-    .from('movimentacoes_financeiras')
-    .select(`
-      tipo,
-      categoria,
-      valor,
-      data_movimento
-    `)
-    .order('data_movimento', { ascending: true })
+  const [resultadoReceitas, resultadoDespesas] = await Promise.all([
+    supabase
+      .from('financeiro')
+      .select('*')
+      .eq('status', 'Recebido')
+      .not('data_pagamento', 'is', null),
+    supabase
+      .from('contas_pagar')
+      .select(`
+        *,
+        categorias_financeiras (
+          id,
+          nome
+        )
+      `)
+      .not('data_vencimento', 'is', null)
+  ])
 
-  if (error) {
+  if (resultadoReceitas.error) {
     console.log(
-      'Erro ao carregar movimentações do Dashboard:',
-      error
+      'Erro ao carregar receitas dos gráficos do Dashboard:',
+      resultadoReceitas.error
     )
-    throw error
+    throw resultadoReceitas.error
   }
 
-  setMovimentacoesDashboard(data || [])
+  if (resultadoDespesas.error) {
+    console.log(
+      'Erro ao carregar despesas dos gráficos do Dashboard:',
+      resultadoDespesas.error
+    )
+    throw resultadoDespesas.error
+  }
+
+  const receitasNormalizadas = (resultadoReceitas.data || []).map(item => ({
+    tipo: 'Entrada',
+    categoria: 'Receitas',
+    valor: Number(item.valor || 0),
+    data_movimento: item.data_pagamento
+  }))
+
+  const despesasNormalizadas = (resultadoDespesas.data || [])
+    .filter(item => String(item.status || '').toLowerCase() !== 'cancelado')
+    .map(item => ({
+      tipo: 'Saída',
+      categoria:
+        item.categorias_financeiras?.nome ||
+        'Sem categoria',
+      valor: Number(item.valor || 0),
+      data_movimento: item.data_vencimento
+    }))
+
+  const movimentacoes = [
+    ...receitasNormalizadas,
+    ...despesasNormalizadas
+  ].sort((a, b) =>
+    String(a.data_movimento || '').localeCompare(
+      String(b.data_movimento || '')
+    )
+  )
+
+  setMovimentacoesDashboard(movimentacoes)
 }
 
   async function carregarRecebimentosPendentes() {
