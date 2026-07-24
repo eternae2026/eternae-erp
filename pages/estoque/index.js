@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
 import InsumoModal from '../../components/InsumoModal'
+import Card from '../../components/ui/Card'
+import Button from '../../components/ui/Button'
+import Badge from '../../components/ui/Badge'
 import { supabase } from '../../lib/supabase'
 
 export default function Estoque() {
@@ -366,13 +369,7 @@ Esta ação é definitiva e não poderá ser desfeita.`
     if (livre <= minimo) return 'Baixo'
     return 'OK'
   }
-
-  function corStatus(status) {
-    if (status === 'Esgotado') return 'bg-red-100 text-red-700'
-    if (status === 'Baixo') return 'bg-yellow-100 text-yellow-700'
-    return 'bg-green-100 text-green-700'
-  }
-
+  
   function formatarMoeda(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
       style: 'currency',
@@ -529,15 +526,15 @@ function vendavelVisual(item) {
             </p>
           </div>
 
-          <button
+                    <Button
+            size="lg"
             onClick={() => {
               setInsumoEditando(null)
               setOpenModal(true)
             }}
-            className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
           >
             ➕ Novo Item
-          </button>
+          </Button>
 
         </div>
 
@@ -680,7 +677,7 @@ function vendavelVisual(item) {
   </button>
 
 </div>
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden w-full">
+        <Card className="overflow-hidden p-0">
   <div className="overflow-y-auto overflow-x-hidden max-h-[60vh] w-full">
 
     <table className="w-full table-fixed text-xs">
@@ -851,12 +848,20 @@ function vendavelVisual(item) {
                     </td>
 
                     <td className="p-4">
-                      <span
-                        className={`${corStatus(status)} px-3 py-1 rounded-full text-sm`}
-                      >
-                        {status}
-                      </span>
-                    </td>
+
+  <Badge
+    variant={
+      status === 'OK'
+        ? 'success'
+        : status === 'Baixo'
+        ? 'warning'
+        : 'danger'
+    }
+  >
+    {status}
+  </Badge>
+
+</td>
 
                     <td className="p-4">
                       {item.fornecedor || '-'}
@@ -1118,7 +1123,7 @@ function vendavelVisual(item) {
 
           </table>
          </div>
-        </div>
+        </Card>
 
         <InsumoModal
           open={openModal}
