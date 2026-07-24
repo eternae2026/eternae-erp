@@ -135,6 +135,14 @@ export default function ContasReceber() {
 
     const pedidoId = lancamentoSelecionado.pedido_id
 
+    /*
+      A confirmação só pode acontecer enquanto
+      a cobrança ainda estiver pendente.
+
+      A condição aplicada no próprio update evita
+      que dois cliques, duas abas ou uma repetição
+      acidental confirmem o mesmo recebimento.
+    */
     const { data, error } = await supabase
       .from('financeiro')
       .update({
@@ -144,6 +152,7 @@ export default function ContasReceber() {
         status: 'Recebido'
       })
       .eq('id', lancamentoSelecionado.id)
+      .eq('status', 'Pendente')
       .select(`
         *,
         clientes (
@@ -167,82 +176,9 @@ export default function ContasReceber() {
 
     const lancamentoAtualizado = data?.[0]
 
-    if (pedidoId) {
-      const { error: erroPedido } = await supabase
-        .from('pedidos')
-        .update({
-          etapa_producao: 'Arte'
-        })
-        .eq('id', pedidoId)
-
-      if (erroPedido) {
-        console.log(
-          'Erro ao encaminhar pedido para Arte:',
-          erroPedido
-        )
-
-        alert(
-          'O pagamento foi recebido, mas houve erro ao encaminhar o pedido para Arte.'
-        )
-
-        await carregarLancamentos()
-        return
-      }
-
-      const { error: erroTimeline } = await supabase
-        .from('pedido_timeline')
-        .insert([
-          {
-            pedido_id: pedidoId,
-            titulo: 'Pagamento confirmado',
-            descricao:
-              'Recebimento confirmado. O pedido foi encaminhado automaticamente para a etapa de Arte.',
-            tipo: 'sucesso'
-          }
-        ])
-
-      if (erroTimeline) {
-        console.log(
-          'Erro ao registrar evento na timeline:',
-          erroTimeline
-        )
-      }
-    }
-
-    const { error: erroMovimentacao } = await supabase
-      .from('movimentacoes_financeiras')
-      .insert([
-        {
-          tipo: 'Entrada',
-          categoria: 'Venda',
-          descricao: `Venda para ${
-            lancamentoAtualizado?.clientes?.nome ||
-            lancamentoSelecionado.clientes?.nome ||
-            'Cliente'
-          }`,
-          valor: Number(
-            lancamentoSelecionado.valor || 0
-          ),
-          forma_pagamento:
-            dados.forma_pagamento ||
-            lancamentoSelecionado.forma_pagamento ||
-            null,
-          data_movimento:
-            dados.data_pagamento ||
-            new Date().toISOString().slice(0, 10),
-          pedido_id: pedidoId || null,
-          observacoes: dados.observacoes || null
-        }
-      ])
-
-    if (erroMovimentacao) {
-      console.log(
-        'Erro ao registrar entrada no fluxo de caixa:',
-        erroMovimentacao
-      )
-
+    if (!lancamentoAtualizado) {
       alert(
-        'O pagamento foi confirmado, mas houve erro ao registrar a entrada no Fluxo de Caixa.'
+        'Esta cobrança já foi processada ou não está mais pendente. A lista será atualizada.'
       )
 
       await carregarLancamentos()
@@ -251,15 +187,190 @@ export default function ContasReceber() {
       return
     }
 
+    let pedidoEncaminhadoParaArte = false
+
+    if (pedidoId) {
+      /*
+        O pagamento só pode encaminhar o pedido
+        para Arte quando ele ainda estiver em
+        Aguardando Pagamento.
+
+        Assim, uma confirmação repetida nunca faz
+        um pedido que já esteja em Produção, Pronto
+        ou Entregue voltar para Arte.
+      */
+      const { data: pedidoAtual, error: erroConsultarPedido } =
+        await supabase
+          .from('pedidos')
+          .select(`
+            id,
+            etapa_producao,
+            status
+          `)
+          .eq('id', pedidoId)
+          .single()
+
+      if (erroConsultarPedido) {
+        console.log(
+          'Erro ao consultar a etapa atual do pedido:',
+          erroConsultarPedido
+        )
+
+        alert(
+          'O pagamento foi recebido, mas não foi possível verificar a etapa atual do pedido.'
+        )
+      } else if (
+        pedidoAtual?.status !== 'Cancelado' &&
+        (
+          !pedidoAtual?.etapa_producao ||
+          pedidoAtual.etapa_producao ===
+            'Aguardando Pagamento'
+        )
+      ) {
+        const { error: erroPedido } = await supabase
+          .from('pedidos')
+          .update({
+            etapa_producao: 'Arte'
+          })
+          .eq('id', pedidoId)
+          .neq('status', 'Cancelado')
+          .or(
+            'etapa_producao.is.null,etapa_producao.eq.Aguardando Pagamento'
+          )
+
+        if (erroPedido) {
+          console.log(
+            'Erro ao encaminhar pedido para Arte:',
+            erroPedido
+          )
+
+          alert(
+            'O pagamento foi recebido, mas houve erro ao encaminhar o pedido para Arte.'
+          )
+        } else {
+          pedidoEncaminhadoParaArte = true
+
+          const { error: erroTimeline } = await supabase
+            .from('pedido_timeline')
+            .insert([
+              {
+                pedido_id: pedidoId,
+                titulo: 'Pagamento confirmado',
+                descricao:
+                  'Recebimento confirmado. O pedido foi encaminhado automaticamente para a etapa de Arte.',
+                tipo: 'sucesso'
+              }
+            ])
+
+          if (erroTimeline) {
+            console.log(
+              'Erro ao registrar evento na timeline:',
+              erroTimeline
+            )
+          }
+        }
+      }
+    }
+
+    /*
+      Evita duplicar a entrada no Fluxo de Caixa
+      caso o processamento seja repetido depois de
+      uma falha de conexão ou atualização da tela.
+    */
+    let movimentacaoJaExiste = false
+
+    if (pedidoId) {
+      const {
+        data: movimentacoesExistentes,
+        error: erroConsultarMovimentacao
+      } = await supabase
+        .from('movimentacoes_financeiras')
+        .select('id')
+        .eq('pedido_id', pedidoId)
+        .eq('tipo', 'Entrada')
+        .eq('categoria', 'Venda')
+        .limit(1)
+
+      if (erroConsultarMovimentacao) {
+        console.log(
+          'Erro ao verificar movimentação financeira existente:',
+          erroConsultarMovimentacao
+        )
+      } else {
+        movimentacaoJaExiste =
+          (movimentacoesExistentes || []).length > 0
+      }
+    }
+
+    if (!movimentacaoJaExiste) {
+      const { error: erroMovimentacao } = await supabase
+        .from('movimentacoes_financeiras')
+        .insert([
+          {
+            tipo: 'Entrada',
+            categoria: 'Venda',
+            descricao: `Venda para ${
+              lancamentoAtualizado?.clientes?.nome ||
+              lancamentoSelecionado.clientes?.nome ||
+              'Cliente'
+            }`,
+            valor: Number(
+              lancamentoAtualizado.valor ||
+              lancamentoSelecionado.valor ||
+              0
+            ),
+            forma_pagamento:
+              dados.forma_pagamento ||
+              lancamentoAtualizado.forma_pagamento ||
+              lancamentoSelecionado.forma_pagamento ||
+              null,
+            data_movimento:
+              dados.data_pagamento ||
+              lancamentoAtualizado.data_pagamento ||
+              new Date().toISOString().slice(0, 10),
+            pedido_id: pedidoId || null,
+            observacoes: dados.observacoes || null
+          }
+        ])
+
+      if (erroMovimentacao) {
+        console.log(
+          'Erro ao registrar entrada no fluxo de caixa:',
+          erroMovimentacao
+        )
+
+        alert(
+          'O pagamento foi confirmado, mas houve erro ao registrar a entrada no Fluxo de Caixa.'
+        )
+
+        await carregarLancamentos()
+        setOpenModal(false)
+        setLancamentoSelecionado(null)
+        return
+      }
+    }
+
     await carregarLancamentos()
 
     setOpenModal(false)
     setLancamentoSelecionado(null)
 
+    if (!pedidoId) {
+      alert(
+        'Pagamento confirmado e entrada registrada no Fluxo de Caixa!'
+      )
+      return
+    }
+
+    if (pedidoEncaminhadoParaArte) {
+      alert(
+        'Pagamento confirmado, pedido encaminhado para Arte e entrada registrada no Fluxo de Caixa!'
+      )
+      return
+    }
+
     alert(
-      pedidoId
-        ? 'Pagamento confirmado, pedido encaminhado para Arte e entrada registrada no Fluxo de Caixa!'
-        : 'Pagamento confirmado e entrada registrada no Fluxo de Caixa!'
+      'Pagamento confirmado e entrada registrada no Fluxo de Caixa. A etapa do pedido foi preservada porque ele já não estava em Aguardando Pagamento.'
     )
   }
 
