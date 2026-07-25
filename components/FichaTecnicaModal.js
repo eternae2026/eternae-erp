@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 export default function FichaTecnicaModal({
   open,
@@ -33,6 +33,14 @@ export default function FichaTecnicaModal({
     }
   }, [open, produto])
 
+  const insumoSelecionado = useMemo(
+    () =>
+      insumos.find(
+        (insumo) => insumo.id === insumoId
+      ) || null,
+    [insumos, insumoId]
+  )
+
   if (!open || !produto) return null
 
   function formatarMoeda(valor) {
@@ -40,6 +48,27 @@ export default function FichaTecnicaModal({
       style: 'currency',
       currency: 'BRL'
     })
+  }
+
+  function normalizarTexto(valor) {
+    return String(valor || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+  }
+
+  function exigeQuantidadeInteira(insumo) {
+    const unidade = normalizarTexto(insumo?.unidade)
+
+    return [
+      'unidade',
+      'unidades',
+      'peca',
+      'pecas',
+      'item',
+      'itens'
+    ].includes(unidade)
   }
 
   function calcularTotal() {
@@ -57,7 +86,7 @@ export default function FichaTecnicaModal({
   async function adicionar() {
     if (adicionando) return
 
-    if (!insumoId) {
+    if (!insumoId || !insumoSelecionado) {
       alert('Selecione um insumo.')
       return
     }
@@ -70,6 +99,16 @@ export default function FichaTecnicaModal({
     ) {
       alert(
         'Informe uma quantidade maior que zero.'
+      )
+      return
+    }
+
+    if (
+      exigeQuantidadeInteira(insumoSelecionado) &&
+      !Number.isInteger(quantidadeNumero)
+    ) {
+      alert(
+        `O item ${insumoSelecionado.nome} é controlado por unidade e deve usar uma quantidade inteira.`
       )
       return
     }
@@ -94,9 +133,7 @@ export default function FichaTecnicaModal({
         quantidade: quantidadeNumero
       })
 
-      if (resultado === false) {
-        return
-      }
+      if (resultado === false) return
 
       setInsumoId('')
       setQuantidade('1')
@@ -149,6 +186,9 @@ export default function FichaTecnicaModal({
       setRemovendoId(null)
     }
   }
+
+  const quantidadeDeveSerInteira =
+    exigeQuantidadeInteira(insumoSelecionado)
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -218,9 +258,10 @@ export default function FichaTecnicaModal({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <select
               value={insumoId}
-              onChange={(e) =>
+              onChange={(e) => {
                 setInsumoId(e.target.value)
-              }
+                setQuantidade('1')
+              }}
               disabled={adicionando}
               className="border rounded-xl px-4 py-3 md:col-span-2 disabled:bg-gray-100"
             >
@@ -237,14 +278,25 @@ export default function FichaTecnicaModal({
                   {formatarMoeda(
                     insumo.custo_unitario
                   )}
+                  {insumo.unidade
+                    ? ` / ${insumo.unidade}`
+                    : ''}
                 </option>
               ))}
             </select>
 
             <input
               type="number"
-              min="0.0001"
-              step="any"
+              min={
+                quantidadeDeveSerInteira
+                  ? '1'
+                  : '0.0001'
+              }
+              step={
+                quantidadeDeveSerInteira
+                  ? '1'
+                  : 'any'
+              }
               placeholder="Quantidade"
               value={quantidade}
               onChange={(e) =>
@@ -254,6 +306,20 @@ export default function FichaTecnicaModal({
               className="border rounded-xl px-4 py-3 disabled:bg-gray-100"
             />
           </div>
+
+          {insumoSelecionado && (
+            <p className="text-xs text-gray-500 mt-3">
+              Unidade de controle:{' '}
+              <strong>
+                {insumoSelecionado.unidade ||
+                  'não informada'}
+              </strong>
+              .{' '}
+              {quantidadeDeveSerInteira
+                ? 'Use somente números inteiros.'
+                : 'Quantidades decimais são permitidas.'}
+            </p>
+          )}
 
           <button
             type="button"
