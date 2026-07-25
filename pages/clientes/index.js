@@ -8,8 +8,12 @@ export default function Clientes() {
   const [clienteEditando, setClienteEditando] = useState(null)
   const [clientes, setClientes] = useState([])
   const [busca, setBusca] = useState('')
+  const [carregando, setCarregando] = useState(true)
+  const [excluindoId, setExcluindoId] = useState(null)
 
   async function carregarClientes() {
+    setCarregando(true)
+
     const { data, error } = await supabase
       .from('clientes')
       .select('*')
@@ -17,10 +21,14 @@ export default function Clientes() {
 
     if (error) {
       console.log('Erro ao carregar clientes:', error)
+      alert('Erro ao carregar os clientes.')
+      setClientes([])
+      setCarregando(false)
       return
     }
 
     setClientes(data || [])
+    setCarregando(false)
   }
 
   useEffect(() => {
@@ -35,12 +43,32 @@ export default function Clientes() {
 
     if (error) {
       console.log('Erro ao salvar cliente:', error)
-      alert('Erro ao salvar cliente.')
-      return
+
+      if (error.code === '23505') {
+        alert(
+          'Já existe um cliente cadastrado com uma informação única igual.'
+        )
+      } else {
+        alert('Erro ao salvar cliente.')
+      }
+
+      return false
     }
 
-    setClientes([data[0], ...clientes])
+    const novoCliente = data?.[0]
+
+    if (!novoCliente) {
+      alert('O cliente não foi retornado após o cadastro.')
+      return false
+    }
+
+    setClientes((listaAtual) => [
+      novoCliente,
+      ...listaAtual
+    ])
+
     setOpenModal(false)
+    return true
   }
 
   async function handleSaveClient(cliente) {
@@ -53,22 +81,39 @@ export default function Clientes() {
 
       if (error) {
         console.log('Erro ao editar cliente:', error)
-        alert('Erro ao editar cliente.')
-        return
+
+        if (error.code === '23505') {
+          alert(
+            'Já existe outro cliente cadastrado com uma informação única igual.'
+          )
+        } else {
+          alert('Erro ao editar cliente.')
+        }
+
+        return false
       }
 
-      setClientes(
-        clientes.map(item =>
-          item.id === clienteEditando.id ? data[0] : item
+      const clienteAtualizado = data?.[0]
+
+      if (!clienteAtualizado) {
+        alert('O cliente não foi retornado após a edição.')
+        return false
+      }
+
+      setClientes((listaAtual) =>
+        listaAtual.map((item) =>
+          item.id === clienteEditando.id
+            ? clienteAtualizado
+            : item
         )
       )
 
       setClienteEditando(null)
       setOpenModal(false)
-      return
+      return true
     }
 
-    await handleAddClient(cliente)
+    return handleAddClient(cliente)
   }
 
   function editarCliente(cliente) {
@@ -76,29 +121,127 @@ export default function Clientes() {
     setOpenModal(true)
   }
 
-  async function excluirCliente(id) {
-    const confirmar = confirm('Tem certeza que deseja excluir este cliente?')
+  async function clientePossuiHistorico(clienteId) {
+    const consultas = [
+      supabase
+        .from('orcamentos')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', clienteId),
 
-    if (!confirmar) return
+      supabase
+        .from('pedidos')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', clienteId),
 
-    const { error } = await supabase
-      .from('clientes')
-      .delete()
-      .eq('id', id)
+      supabase
+        .from('financeiro')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', clienteId)
+    ]
 
-    if (error) {
-      console.log('Erro ao excluir cliente:', error)
-      alert('Erro ao excluir cliente.')
-      return
+    const resultados = await Promise.all(consultas)
+
+    const erroConsulta = resultados.find(
+      (resultado) => resultado.error
+    )
+
+    if (erroConsulta) {
+      console.log(
+        'Erro ao verificar histórico do cliente:',
+        erroConsulta.error
+      )
+
+      throw erroConsulta.error
     }
 
-    setClientes(clientes.filter(cliente => cliente.id !== id))
+    return resultados.some(
+      (resultado) => Number(resultado.count || 0) > 0
+    )
   }
 
-  const clientesFiltrados = clientes.filter(cliente =>
-    `${cliente.nome || ''} ${cliente.whatsapp || ''} ${cliente.instagram || ''}`
-      .toLowerCase()
-      .includes(busca.toLowerCase())
+  async function excluirCliente(cliente) {
+    if (excluindoId) return
+
+    setExcluindoId(cliente.id)
+
+    try {
+      const possuiHistorico =
+        await clientePossuiHistorico(cliente.id)
+
+      if (possuiHistorico) {
+        alert(
+          'Este cliente possui orçamento, pedido ou lançamento financeiro e não pode ser excluído. O histórico precisa ser preservado.'
+        )
+        return
+      }
+
+      const confirmar = confirm(
+        `Tem certeza que deseja excluir o cliente ${cliente.nome}? Esta ação é indicada apenas para cadastros criados por engano.`
+      )
+
+      if (!confirmar) return
+
+      const { error } = await supabase
+        .from('clientes')
+        .delete()
+        .eq('id', cliente.id)
+
+      if (error) {
+        console.log('Erro ao excluir cliente:', error)
+        alert(
+          'Não foi possível excluir o cliente. Verifique se ele possui algum vínculo no sistema.'
+        )
+        return
+      }
+
+      setClientes((listaAtual) =>
+        listaAtual.filter(
+          (item) => item.id !== cliente.id
+        )
+      )
+
+      alert('Cliente excluído com sucesso.')
+    } catch (error) {
+      console.log(
+        'Erro ao validar exclusão do cliente:',
+        error
+      )
+
+      alert(
+        'Não foi possível verificar o histórico do cliente. A exclusão não foi realizada.'
+      )
+    } finally {
+      setExcluindoId(null)
+    }
+  }
+
+  function formatarDataSemFuso(data) {
+    if (!data) return '-'
+
+    return new Date(
+      `${data}T00:00:00`
+    ).toLocaleDateString('pt-BR')
+  }
+
+  function gerarLinkWhatsapp(numero) {
+    let digitos = String(numero || '').replace(/\D/g, '')
+
+    if (!digitos) return null
+
+    if (digitos.startsWith('55') && digitos.length >= 12) {
+      return `https://wa.me/${digitos}`
+    }
+
+    return `https://wa.me/55${digitos}`
+  }
+
+  const clientesFiltrados = clientes.filter(
+    (cliente) =>
+      `${cliente.nome || ''} ${cliente.whatsapp || ''} ${
+        cliente.instagram || ''
+      } ${cliente.observacoes || ''}`
+        .toLowerCase()
+        .includes(busca.trim().toLowerCase())
   )
 
   return (
@@ -106,9 +249,7 @@ export default function Clientes() {
       <Sidebar />
 
       <main className="flex-1 p-8">
-
         <div className="flex items-center justify-between mb-8">
-
           <div>
             <h1 className="text-3xl font-bold text-gray-800">
               Clientes
@@ -120,6 +261,7 @@ export default function Clientes() {
           </div>
 
           <button
+            type="button"
             onClick={() => {
               setClienteEditando(null)
               setOpenModal(true)
@@ -128,11 +270,9 @@ export default function Clientes() {
           >
             + Novo Cliente
           </button>
-
         </div>
 
         <div className="mb-6">
-
           <input
             type="text"
             placeholder="Buscar cliente..."
@@ -140,124 +280,128 @@ export default function Clientes() {
             onChange={(e) => setBusca(e.target.value)}
             className="w-full md:w-96 border rounded-xl px-4 py-3"
           />
-
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-
-          <table className="w-full">
-
-            <thead className="bg-gray-50">
-
-              <tr>
-
-                <th className="text-left p-4 text-gray-600">
-                  Nome
-                </th>
-
-                <th className="text-left p-4 text-gray-600">
-                  WhatsApp
-                </th>
-
-                <th className="text-left p-4 text-gray-600">
-                  Instagram
-                </th>
-
-                <th className="text-left p-4 text-gray-600">
-                  Aniversário
-                </th>
-
-                <th className="text-left p-4 text-gray-600">
-                  Ações
-                </th>
-
-              </tr>
-
-            </thead>
-
-            <tbody>
-
-              {clientesFiltrados.map(cliente => (
-
-                <tr
-                  key={cliente.id}
-                  className="border-t"
-                >
-
-                  <td className="p-4">
-                    {cliente.nome}
-                  </td>
-
-                  <td className="p-4">
-
-                    {cliente.whatsapp ? (
-                      <a
-                        href={`https://wa.me/55${cliente.whatsapp.replace(/\D/g, '')}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-green-600 hover:underline"
-                      >
-                        {cliente.whatsapp}
-                      </a>
-                    ) : '-'}
-                  </td>
-
-                  <td className="p-4">
-                    {cliente.instagram || '-'}
-                  </td>
-
-                  <td className="p-4">
-                    {cliente.aniversario
-                      ? new Date(cliente.aniversario)
-                          .toLocaleDateString('pt-BR')
-                      : '-'}
-                  </td>
-
-                  <td className="p-4">
-
-                    <div className="flex gap-3">
-
-                      <button
-                        onClick={() => editarCliente(cliente)}
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        Editar
-                      </button>
-
-                      <button
-                        onClick={() => excluirCliente(cliente.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        Excluir
-                      </button>
-
-                    </div>
-
-                  </td>
-
-                </tr>
-
-              ))}
-
-              {clientesFiltrados.length === 0 && (
-
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
                 <tr>
+                  <th className="text-left p-4 text-gray-600">
+                    Nome
+                  </th>
 
-                  <td
-                    colSpan="5"
-                    className="p-6 text-center text-gray-500"
-                  >
-                    Nenhum cliente encontrado.
-                  </td>
+                  <th className="text-left p-4 text-gray-600">
+                    WhatsApp
+                  </th>
 
+                  <th className="text-left p-4 text-gray-600">
+                    Instagram
+                  </th>
+
+                  <th className="text-left p-4 text-gray-600">
+                    Aniversário
+                  </th>
+
+                  <th className="text-left p-4 text-gray-600">
+                    Ações
+                  </th>
                 </tr>
+              </thead>
 
-              )}
+              <tbody>
+                {carregando ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="p-8 text-center text-gray-500"
+                    >
+                      Carregando clientes...
+                    </td>
+                  </tr>
+                ) : clientesFiltrados.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="p-8 text-center text-gray-500"
+                    >
+                      Nenhum cliente encontrado.
+                    </td>
+                  </tr>
+                ) : (
+                  clientesFiltrados.map((cliente) => {
+                    const linkWhatsapp =
+                      gerarLinkWhatsapp(cliente.whatsapp)
 
-            </tbody>
+                    return (
+                      <tr
+                        key={cliente.id}
+                        className="border-t hover:bg-gray-50"
+                      >
+                        <td className="p-4">
+                          {cliente.nome}
+                        </td>
 
-          </table>
+                        <td className="p-4">
+                          {linkWhatsapp ? (
+                            <a
+                              href={linkWhatsapp}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-green-600 hover:underline"
+                            >
+                              {cliente.whatsapp}
+                            </a>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
 
+                        <td className="p-4">
+                          {cliente.instagram || '-'}
+                        </td>
+
+                        <td className="p-4">
+                          {formatarDataSemFuso(
+                            cliente.aniversario
+                          )}
+                        </td>
+
+                        <td className="p-4">
+                          <div className="flex gap-3">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                editarCliente(cliente)
+                              }
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              Editar
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                excluirCliente(cliente)
+                              }
+                              disabled={
+                                excluindoId === cliente.id
+                              }
+                              className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                            >
+                              {excluindoId === cliente.id
+                                ? 'Verificando...'
+                                : 'Excluir'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <ClientModal
@@ -269,9 +413,7 @@ export default function Clientes() {
           onSave={handleSaveClient}
           cliente={clienteEditando}
         />
-
       </main>
-
     </div>
   )
 }
