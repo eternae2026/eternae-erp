@@ -29,6 +29,18 @@ const [itemSelecionadoId, setItemSelecionadoId] =
 const [quantidade, setQuantidade] =
   useState('1')
 
+const [salvandoKit, setSalvandoKit] =
+  useState(false)
+
+const [adicionandoItem, setAdicionandoItem] =
+  useState(false)
+
+const [removendoItemId, setRemovendoItemId] =
+  useState(null)
+
+const [excluindoKitId, setExcluindoKitId] =
+  useState(null)
+
   async function carregarKits() {
   const { data, error } = await supabase
     .from('kits')
@@ -339,74 +351,146 @@ function calcularCusto(itens) {
     return data
   }
 
+  function normalizarTexto(valor) {
+    return String(valor || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+  }
+
+  function exigeQuantidadeInteira(unidade) {
+    const unidadeNormalizada = normalizarTexto(unidade)
+
+    return [
+      'unidade',
+      'unidades',
+      'peca',
+      'pecas',
+      'item',
+      'itens'
+    ].includes(unidadeNormalizada)
+  }
+
+  async function kitPossuiHistorico(kitId) {
+    const { count, error } = await supabase
+      .from('orcamento_itens')
+      .select('id', {
+        count: 'exact',
+        head: true
+      })
+      .eq('kit_id', kitId)
+
+    if (error) {
+      console.log(
+        'Erro ao verificar histórico do kit:',
+        error
+      )
+
+      throw error
+    }
+
+    return Number(count || 0) > 0
+  }
+
   async function salvarKit() {
-    if (!nome) {
+    if (salvandoKit) return
+
+    const nomeNormalizado = nome.trim()
+    const descontoNumero = Number(descontoPercentual)
+
+    if (!nomeNormalizado) {
       alert('Informe o nome do kit.')
       return
     }
 
-    if (kitEditando) {
-      const { data, error } = await supabase
-        .from('kits')
-        .update({
-          nome,
-          descricao,
-          desconto_percentual: Number(descontoPercentual || 0)
-        })
-        .eq('id', kitEditando.id)
-        .select()
-        .single()
-
-      if (error) {
-        console.log('Erro ao editar kit:', error)
-        alert('Erro ao editar kit.')
-        return
-      }
-
-      const itens = await carregarItensKit(data.id)
-      await atualizarMetricasKit(data, itens)
-
-      await carregarKits()
-
-      if (kitSelecionado?.id === data.id) {
-        setKitSelecionado(data)
-      }
-
-      setKitEditando(null)
-setNome('')
-setDescricao('')
-setDescontoPercentual('0')
-setOpenModalKit(false)
-
-alert('Kit atualizado!')
-return
-    }
-
-    const { data, error } = await supabase
-      .from('kits')
-      .insert([
-        {
-          nome,
-          descricao,
-          desconto_percentual: Number(descontoPercentual || 0),
-          ativo: true
-        }
-      ])
-      .select()
-
-    if (error) {
-      console.log('Erro ao salvar kit:', error)
-      alert('Erro ao salvar kit.')
+    if (!Number.isFinite(descontoNumero)) {
+      alert('Informe um desconto válido.')
       return
     }
 
-    setKits([data[0], ...kits])
-setNome('')
-setDescricao('')
-setDescontoPercentual('0')
-setOpenModalKit(false)
+    if (descontoNumero < 0 || descontoNumero >= 100) {
+      alert(
+        'O desconto do kit deve ser maior ou igual a 0% e menor que 100%.'
+      )
+      return
+    }
 
-alert('Kit criado com sucesso!')
+    const dadosKit = {
+      nome: nomeNormalizado,
+      descricao: descricao.trim() || null,
+      desconto_percentual: descontoNumero
+    }
+
+    setSalvandoKit(true)
+
+    try {
+      if (kitEditando) {
+        const { data, error } = await supabase
+          .from('kits')
+          .update(dadosKit)
+          .eq('id', kitEditando.id)
+          .select()
+          .single()
+
+        if (error) {
+          console.log('Erro ao editar kit:', error)
+          alert('Erro ao editar kit.')
+          return
+        }
+
+        const itens = await carregarItensKit(data.id)
+        const kitAtualizado = await atualizarMetricasKit(data, itens)
+
+        await carregarKits()
+
+        if (kitSelecionado?.id === data.id) {
+          setKitSelecionado(kitAtualizado || data)
+        }
+
+        setKitEditando(null)
+        setNome('')
+        setDescricao('')
+        setDescontoPercentual('0')
+        setOpenModalKit(false)
+
+        alert('Kit atualizado com sucesso!')
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('kits')
+        .insert([
+          {
+            ...dadosKit,
+            ativo: true
+          }
+        ])
+        .select()
+
+      if (error) {
+        console.log('Erro ao salvar kit:', error)
+        alert('Erro ao salvar kit.')
+        return
+      }
+
+      const novoKit = data?.[0]
+
+      if (!novoKit) {
+        alert('O kit não foi retornado após o cadastro.')
+        return
+      }
+
+      setKits((listaAtual) => [novoKit, ...listaAtual])
+      setNome('')
+      setDescricao('')
+      setDescontoPercentual('0')
+      setOpenModalKit(false)
+
+      alert('Kit criado com sucesso!')
+    } finally {
+      setSalvandoKit(false)
+    }
   }
 
   function editarKit(kit) {
@@ -427,26 +511,68 @@ alert('Kit criado com sucesso!')
     setOpenModalKit(false)
   }
 
-  async function excluirKit(id) {
-    const confirmar = confirm('Tem certeza que deseja excluir este kit?')
-    if (!confirmar) return
+  async function excluirKit(kit) {
+    if (excluindoKitId) return
 
-    const { error } = await supabase
-      .from('kits')
-      .delete()
-      .eq('id', id)
+    setExcluindoKitId(kit.id)
 
-    if (error) {
-      console.log('Erro ao excluir kit:', error)
-      alert('Erro ao excluir kit.')
-      return
-    }
+    try {
+      const possuiHistorico = await kitPossuiHistorico(kit.id)
 
-    setKits(kits.filter(kit => kit.id !== id))
+      if (possuiHistorico) {
+        alert(
+          'Este kit já foi utilizado em orçamento ou pedido e não pode ser excluído. O histórico precisa ser preservado.'
+        )
+        return
+      }
 
-    if (kitSelecionado?.id === id) {
-      setKitSelecionado(null)
-      setItensKit([])
+      const confirmar = confirm(
+        `Tem certeza que deseja excluir o kit ${kit.nome}? Esta ação é indicada apenas para cadastros criados por engano.`
+      )
+
+      if (!confirmar) return
+
+      const { error: erroItens } = await supabase
+        .from('kit_itens')
+        .delete()
+        .eq('kit_id', kit.id)
+
+      if (erroItens) {
+        console.log('Erro ao excluir itens do kit:', erroItens)
+        alert('Não foi possível excluir os itens do kit.')
+        return
+      }
+
+      const { error: erroKit } = await supabase
+        .from('kits')
+        .delete()
+        .eq('id', kit.id)
+
+      if (erroKit) {
+        console.log('Erro ao excluir kit:', erroKit)
+        alert(
+          'Não foi possível excluir o kit. Verifique se ele possui algum vínculo no sistema.'
+        )
+        return
+      }
+
+      setKits((listaAtual) =>
+        listaAtual.filter((item) => item.id !== kit.id)
+      )
+
+      if (kitSelecionado?.id === kit.id) {
+        setKitSelecionado(null)
+        setItensKit([])
+      }
+
+      alert('Kit excluído com sucesso.')
+    } catch (error) {
+      console.log('Erro ao validar exclusão do kit:', error)
+      alert(
+        'Não foi possível verificar o histórico do kit. A exclusão não foi realizada.'
+      )
+    } finally {
+      setExcluindoKitId(null)
     }
   }
 
@@ -512,124 +638,155 @@ alert('Kit criado com sucesso!')
 }
 
   async function adicionarItemAoKit() {
-  if (!kitSelecionado) {
-    alert('Selecione um kit.')
-    return
-  }
+    if (adicionandoItem) return
 
-  if (!itemSelecionadoId) {
-    alert('Selecione um item.')
-    return
-  }
-
-  const quantidadeNumero =
-    Number(quantidade || 0)
-
-  if (quantidadeNumero <= 0) {
-    alert(
-      'Informe uma quantidade maior que zero.'
-    )
-    return
-  }
-
-  const itemJaExiste = itensKit.some(item => {
-    if (
-      tipoItemSelecionado === 'produto'
-    ) {
-      return (
-        item.tipo_item === 'produto' &&
-        String(item.produto_id) ===
-          String(itemSelecionadoId)
-      )
-    }
-
-    return (
-      item.tipo_item === 'estoque' &&
-      String(item.estoque_id) ===
-        String(itemSelecionadoId)
-    )
-  })
-
-  if (itemJaExiste) {
-    alert(
-      'Este item já faz parte do kit.'
-    )
-    return
-  }
-
-  const dadosNovoItem =
-    tipoItemSelecionado === 'produto'
-      ? {
-          kit_id: kitSelecionado.id,
-          tipo_item: 'produto',
-          produto_id: itemSelecionadoId,
-          estoque_id: null,
-          quantidade: quantidadeNumero
-        }
-      : {
-          kit_id: kitSelecionado.id,
-          tipo_item: 'estoque',
-          produto_id: null,
-          estoque_id: itemSelecionadoId,
-          quantidade: quantidadeNumero
-        }
-
-  const { error } = await supabase
-    .from('kit_itens')
-    .insert([dadosNovoItem])
-
-  if (error) {
-    console.log(
-      'Erro ao adicionar item ao kit:',
-      error
-    )
-
-    alert(
-      'Erro ao adicionar item ao kit.'
-    )
-    return
-  }
-
-  setItemSelecionadoId('')
-  setQuantidade('1')
-
-  const itens = await carregarItensKit(
-    kitSelecionado.id
-  )
-
-  const kitAtualizado =
-    await atualizarMetricasKit(
-      kitSelecionado,
-      itens
-    )
-
-  if (kitAtualizado) {
-    setKitSelecionado(kitAtualizado)
-  }
-
-  await carregarKits()
-}
-
-  async function removerItemKit(id) {
-    const { error } = await supabase
-      .from('kit_itens')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      console.log('Erro ao remover item:', error)
-      alert('Erro ao remover item.')
+    if (!kitSelecionado) {
+      alert('Selecione um kit.')
       return
     }
 
-    const itens = await carregarItensKit(kitSelecionado.id)
-    const kitAtualizado = await atualizarMetricasKit(kitSelecionado, itens)
-
-    if (kitAtualizado) {
-      setKitSelecionado(kitAtualizado)
+    if (!itemSelecionadoId) {
+      alert('Selecione um item.')
+      return
     }
 
-    await carregarKits()
+    const quantidadeNumero = Number(quantidade)
+
+    if (!Number.isFinite(quantidadeNumero) || quantidadeNumero <= 0) {
+      alert('Informe uma quantidade maior que zero.')
+      return
+    }
+
+    const itemSelecionado =
+      tipoItemSelecionado === 'produto'
+        ? produtos.find(
+            item => String(item.id) === String(itemSelecionadoId)
+          ) || null
+        : itensVendaveis.find(
+            item => String(item.id) === String(itemSelecionadoId)
+          ) || null
+
+    const quantidadeDeveSerInteira =
+      tipoItemSelecionado === 'produto' ||
+      exigeQuantidadeInteira(itemSelecionado?.unidade)
+
+    if (quantidadeDeveSerInteira && !Number.isInteger(quantidadeNumero)) {
+      alert(
+        `O item ${itemSelecionado?.nome || 'selecionado'} deve usar uma quantidade inteira.`
+      )
+      return
+    }
+
+    const itemJaExiste = itensKit.some(item => {
+      if (tipoItemSelecionado === 'produto') {
+        return (
+          item.tipo_item === 'produto' &&
+          String(item.produto_id) === String(itemSelecionadoId)
+        )
+      }
+
+      return (
+        item.tipo_item === 'estoque' &&
+        String(item.estoque_id) === String(itemSelecionadoId)
+      )
+    })
+
+    if (itemJaExiste) {
+      alert('Este item já faz parte do kit.')
+      return
+    }
+
+    const dadosNovoItem =
+      tipoItemSelecionado === 'produto'
+        ? {
+            kit_id: kitSelecionado.id,
+            tipo_item: 'produto',
+            produto_id: itemSelecionadoId,
+            estoque_id: null,
+            quantidade: quantidadeNumero
+          }
+        : {
+            kit_id: kitSelecionado.id,
+            tipo_item: 'estoque',
+            produto_id: null,
+            estoque_id: itemSelecionadoId,
+            quantidade: quantidadeNumero
+          }
+
+    setAdicionandoItem(true)
+
+    try {
+      const { error } = await supabase
+        .from('kit_itens')
+        .insert([dadosNovoItem])
+
+      if (error) {
+        console.log('Erro ao adicionar item ao kit:', error)
+        alert('Erro ao adicionar item ao kit.')
+        return
+      }
+
+      setItemSelecionadoId('')
+      setQuantidade('1')
+
+      const itens = await carregarItensKit(kitSelecionado.id)
+      const kitAtualizado = await atualizarMetricasKit(
+        kitSelecionado,
+        itens
+      )
+
+      if (kitAtualizado) {
+        setKitSelecionado(kitAtualizado)
+      }
+
+      await carregarKits()
+    } finally {
+      setAdicionandoItem(false)
+    }
+  }
+
+  async function removerItemKit(item) {
+    if (removendoItemId) return
+
+    const nomeItem =
+      item.produtos?.nome ||
+      item.estoque?.nome ||
+      'este item'
+
+    const confirmar = confirm(
+      `Deseja remover ${nomeItem} deste kit?`
+    )
+
+    if (!confirmar) return
+
+    setRemovendoItemId(item.id)
+
+    try {
+      const { error } = await supabase
+        .from('kit_itens')
+        .delete()
+        .eq('id', item.id)
+
+      if (error) {
+        console.log('Erro ao remover item:', error)
+        alert('Erro ao remover item.')
+        return
+      }
+
+      const itens = await carregarItensKit(kitSelecionado.id)
+      const kitAtualizado = await atualizarMetricasKit(
+        kitSelecionado,
+        itens
+      )
+
+      if (kitAtualizado) {
+        setKitSelecionado(kitAtualizado)
+      }
+
+      await carregarKits()
+    } finally {
+      setRemovendoItemId(null)
+    }
   }
 
   function nomesItensKit(kit) {
@@ -900,9 +1057,10 @@ function custoEmbalagemKit() {
 
     <button
       type="button"
-      onClick={() => excluirKit(kit.id)}
+      onClick={() => excluirKit(kit)}
       title="Excluir kit"
       aria-label="Excluir kit"
+      disabled={excluindoKitId === kit.id}
       className="
         w-9 h-9
         rounded-lg
@@ -913,9 +1071,10 @@ function custoEmbalagemKit() {
         hover:bg-red-50
         hover:border-red-300
         transition
+        disabled:opacity-50
       "
     >
-      🗑
+      {excluindoKitId === kit.id ? '…' : '🗑'}
     </button>
 
   </div>
@@ -990,7 +1149,7 @@ function custoEmbalagemKit() {
             <input
               type="number"
               min="0"
-              max="100"
+              max="99.99"
               step="0.01"
               placeholder="0"
               value={descontoPercentual}
@@ -1034,11 +1193,14 @@ function custoEmbalagemKit() {
         <button
           type="button"
           onClick={salvarKit}
-          className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
+          disabled={salvandoKit}
+          className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition disabled:opacity-60"
         >
-          {kitEditando
-            ? 'Salvar alterações'
-            : 'Salvar Kit'}
+          {salvandoKit
+            ? 'Salvando...'
+            : kitEditando
+              ? 'Salvar alterações'
+              : 'Salvar Kit'}
         </button>
       </div>
 
@@ -1181,9 +1343,12 @@ function custoEmbalagemKit() {
 
         <button
           onClick={adicionarItemAoKit}
-          className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
+          disabled={adicionandoItem}
+          className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition disabled:opacity-60"
         >
-          + Adicionar
+          {adicionandoItem
+            ? 'Adicionando...'
+            : '+ Adicionar'}
         </button>
       </div>
 
@@ -1274,10 +1439,13 @@ function custoEmbalagemKit() {
 
                 <td className="p-4">
                   <button
-                    onClick={() => removerItemKit(item.id)}
-                    className="text-red-600 hover:text-red-800"
+                    onClick={() => removerItemKit(item)}
+                    disabled={removendoItemId === item.id}
+                    className="text-red-600 hover:text-red-800 disabled:opacity-50"
                   >
-                    Remover
+                    {removendoItemId === item.id
+                      ? 'Removendo...'
+                      : 'Remover'}
                   </button>
                 </td>
               </tr>
