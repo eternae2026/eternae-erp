@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 
 const TextArea = forwardRef(function TextArea(
   {
@@ -7,7 +7,7 @@ const TextArea = forwardRef(function TextArea(
     helperText = '',
     required = false,
     disabled = false,
-    rows = 4,
+    rows = 3,
     className = '',
     textareaClassName = '',
     id,
@@ -15,29 +15,17 @@ const TextArea = forwardRef(function TextArea(
   },
   ref
 ) {
-  const fieldId =
-    id || props.name || `textarea-${Math.random().toString(36).slice(2)}`
-
+  const generatedId = useId()
+  const fieldId = id || props.name || generatedId
   const helperId = `${fieldId}-helper`
   const errorId = `${fieldId}-error`
 
   return (
     <div className={`w-full ${className}`}>
       {label && (
-        <label
-          htmlFor={fieldId}
-          className="mb-2 block text-sm font-medium text-gray-700"
-        >
+        <label htmlFor={fieldId} className="mb-2 block text-sm font-medium text-gray-700">
           {label}
-
-          {required && (
-            <span
-              className="ml-1 text-red-500"
-              aria-hidden="true"
-            >
-              *
-            </span>
-          )}
+          {required && <span className="ml-1 text-red-500" aria-hidden="true">*</span>}
         </label>
       )}
 
@@ -48,15 +36,9 @@ const TextArea = forwardRef(function TextArea(
         required={required}
         disabled={disabled}
         aria-invalid={Boolean(error)}
-        aria-describedby={
-          error
-            ? errorId
-            : helperText
-              ? helperId
-              : undefined
-        }
+        aria-describedby={error ? errorId : helperText ? helperId : undefined}
         className={`
-          min-h-[112px]
+          min-h-[104px]
           w-full
           resize-y
           rounded-xl
@@ -65,9 +47,12 @@ const TextArea = forwardRef(function TextArea(
           px-4
           py-3
           text-sm
-          text-gray-800
+          leading-6
+          text-gray-900
+          shadow-sm
           outline-none
-          transition
+          transition-all
+          duration-200
           placeholder:text-gray-400
           focus:ring-2
           disabled:cursor-not-allowed
@@ -75,39 +60,16 @@ const TextArea = forwardRef(function TextArea(
           disabled:text-gray-500
           ${
             error
-              ? `
-                border-red-300
-                focus:border-red-500
-                focus:ring-red-100
-              `
-              : `
-                border-gray-200
-                focus:border-green-600
-                focus:ring-green-100
-              `
+              ? 'border-red-300 focus:border-red-500 focus:ring-red-100'
+              : 'border-gray-200 hover:border-gray-300 focus:border-green-600 focus:ring-green-100'
           }
           ${textareaClassName}
         `}
         {...props}
       />
 
-      {error && (
-        <p
-          id={errorId}
-          className="mt-2 text-sm text-red-600"
-        >
-          {error}
-        </p>
-      )}
-
-      {!error && helperText && (
-        <p
-          id={helperId}
-          className="mt-2 text-sm text-gray-500"
-        >
-          {helperText}
-        </p>
-      )}
+      {error && <p id={errorId} className="mt-2 text-sm text-red-600">{error}</p>}
+      {!error && helperText && <p id={helperId} className="mt-2 text-sm text-gray-500">{helperText}</p>}
     </div>
   )
 })

@@ -356,11 +356,20 @@ setOrcamentoParaAprovar(null)
     }
 
     const { error: erroStatus } = await supabase
-      .from('orcamentos')
-      .update({
-        status: 'Aprovado'
-      })
-      .eq('id', orcamento.id)
+  .from('orcamentos')
+  .update({
+    status: 'Aprovado',
+    forma_pagamento: formaPagamento,
+    valor_referencia: valorOrcamento,
+    desconto_pix_percentual:
+      formaPagamento === 'PIX' ? taxaPix : 0,
+    desconto_pix_valor:
+      formaPagamento === 'PIX'
+        ? descontoPixValor
+        : 0,
+    valor_final: valorFinal
+  })
+  .eq('id', orcamento.id)
 
     if (erroStatus) {
       console.log('Erro ao aprovar orçamento:', erroStatus)
@@ -643,8 +652,9 @@ if (mensagem) {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50">
+  <div className="max-h-[60vh] overflow-auto">
+    <table className="w-full">
+      <thead className="bg-gray-100 sticky top-0 z-10 border-b border-gray-200">
               <tr>
                 <th className="text-left p-4 text-gray-600">Cliente</th>
                 <th className="text-left p-4 text-gray-600">Produtos</th>
@@ -676,8 +686,31 @@ if (mensagem) {
                   </td>
 
                   <td className="p-4">
-                    {formatarMoeda(orcamento.valor)}
-                  </td>
+  <div>
+    <div className="font-medium">
+      {formatarMoeda(
+        orcamento.valor_final || orcamento.valor
+      )}
+    </div>
+
+    {orcamento.status === 'Aprovado' &&
+      orcamento.forma_pagamento === 'PIX' &&
+      Number(orcamento.desconto_pix_percentual) > 0 && (
+        <div className="text-xs text-green-600 mt-1">
+          PIX (-{Number(
+            orcamento.desconto_pix_percentual
+          ).toFixed(2)}%)
+        </div>
+      )}
+
+    {orcamento.status === 'Aprovado' &&
+      orcamento.forma_pagamento === 'Cartão' && (
+        <div className="text-xs text-blue-600 mt-1">
+          Cartão
+        </div>
+      )}
+  </div>
+</td>
 
                   <td className="p-4">
                     <span className={`${corStatus(orcamento.status)} px-3 py-1 rounded-full text-sm`}>
@@ -749,6 +782,7 @@ if (mensagem) {
             </tbody>
           </table>
         </div>
+      </div>
 
         <OrcamentoModal
           open={openModal}

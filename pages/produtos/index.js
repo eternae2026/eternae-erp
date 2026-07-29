@@ -10,6 +10,8 @@ export default function Produtos() {
   const [produtoSelecionado, setProdutoSelecionado] = useState(null)
   const [openFicha, setOpenFicha] = useState(false)
   const [produtoEditando, setProdutoEditando] = useState(null)
+  const [openProdutoModal, setOpenProdutoModal] = useState(false)
+  const [busca, setBusca] = useState('')
 
   const [nome, setNome] = useState('')
   const [categoria, setCategoria] = useState('')
@@ -89,6 +91,18 @@ export default function Produtos() {
     setMargemLucro('60')
   }
 
+  function abrirNovoProduto() {
+    limparFormulario()
+    setOpenProdutoModal(true)
+  }
+
+  function fecharProdutoModal() {
+    if (salvando) return
+
+    setOpenProdutoModal(false)
+    limparFormulario()
+  }
+
   function validarProduto() {
     const nomeNormalizado = nome.trim()
     const margemNumero = Number(margemLucro)
@@ -162,6 +176,7 @@ export default function Produtos() {
           )
         )
 
+        setOpenProdutoModal(false)
         limparFormulario()
         alert('Produto atualizado com sucesso!')
         return
@@ -201,6 +216,7 @@ export default function Produtos() {
         ...listaAtual
       ])
 
+      setOpenProdutoModal(false)
       limparFormulario()
       alert('Produto cadastrado com sucesso!')
     } finally {
@@ -209,11 +225,6 @@ export default function Produtos() {
   }
 
   function editarProduto(produto) {
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth'
-    })
-
     setProdutoEditando(produto)
     setNome(produto.nome || '')
     setCategoria(produto.categoria || '')
@@ -224,10 +235,11 @@ export default function Produtos() {
         ? String(produto.margem_lucro)
         : '60'
     )
+    setOpenProdutoModal(true)
   }
 
   function cancelarEdicao() {
-    limparFormulario()
+    fecharProdutoModal()
   }
 
   async function produtoPossuiHistorico(produtoId) {
@@ -377,6 +389,14 @@ export default function Produtos() {
     return true
   }
 
+  const produtosFiltrados = produtos.filter((produto) =>
+    `${produto.nome || ''} ${produto.categoria || ''} ${
+      produto.descricao || ''
+    }`
+      .toLowerCase()
+      .includes(busca.trim().toLowerCase())
+  )
+
   async function salvarTempoProducao(produtoId, tempo) {
     const { data, error } = await supabase
       .from('produtos')
@@ -417,131 +437,49 @@ export default function Produtos() {
       <Sidebar />
 
       <main className="flex-1 p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">
-            Produtos
-          </h1>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800">
+              Produtos
+            </h1>
 
-          <p className="text-gray-500">
-            Cadastre os produtos vendidos e configure suas fichas técnicas.
-          </p>
-        </div>
-
-        <div
-          className={`bg-white rounded-2xl p-6 shadow-sm mb-8 border ${
-            produtoEditando
-              ? 'border-blue-200'
-              : 'border-transparent'
-          }`}
-        >
-          <h2 className="text-xl font-bold text-gray-800 mb-4">
-            {produtoEditando
-              ? 'Editar Produto'
-              : 'Novo Produto'}
-          </h2>
-
-          {produtoEditando && (
-            <p className="text-sm text-gray-500 mb-4">
-              Atualize as informações do produto. As alterações serão utilizadas apenas em novos orçamentos e pedidos.
+            <p className="text-gray-500">
+              Cadastre os produtos vendidos e configure suas fichas técnicas.
             </p>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">
-                Nome <span className="text-red-500">*</span>
-              </label>
-
-              <input
-                type="text"
-                placeholder="Nome do produto"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                disabled={salvando}
-                className="w-full border rounded-xl px-4 py-3 disabled:bg-gray-100"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">
-                Categoria
-              </label>
-
-              <input
-                type="text"
-                placeholder="Categoria"
-                value={categoria}
-                onChange={(e) => setCategoria(e.target.value)}
-                disabled={salvando}
-                className="w-full border rounded-xl px-4 py-3 disabled:bg-gray-100"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-600 mb-2">
-                Margem desejada (%)
-              </label>
-
-              <input
-                type="number"
-                min="0"
-                max="99.99"
-                step="0.01"
-                placeholder="Margem (%)"
-                value={margemLucro}
-                onChange={(e) =>
-                  setMargemLucro(e.target.value)
-                }
-                disabled={salvando}
-                className="w-full border rounded-xl px-4 py-3 disabled:bg-gray-100"
-              />
-            </div>
           </div>
 
-          <label className="block text-sm text-gray-600 mb-2">
-            Descrição
-          </label>
+          <button
+            type="button"
+            onClick={abrirNovoProduto}
+            className="bg-gray-900 text-white px-5 py-3 rounded-xl hover:bg-gray-800 transition"
+          >
+            + Novo Produto
+          </button>
+        </div>
 
-          <textarea
-            rows="3"
-            placeholder="Descrição do produto"
-            value={descricao}
-            onChange={(e) => setDescricao(e.target.value)}
-            disabled={salvando}
-            className="w-full border rounded-xl px-4 py-3 disabled:bg-gray-100"
-          />
-
-          <div className="flex justify-end gap-3 mt-4">
-            {produtoEditando && (
-              <button
-                type="button"
-                onClick={cancelarEdicao}
-                disabled={salvando}
-                className="bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl hover:bg-gray-100 transition whitespace-nowrap disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={salvarProduto}
-              disabled={salvando}
-              className="bg-gray-900 text-white px-6 py-3 rounded-xl hover:bg-gray-800 transition whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
+        <div className="mb-6">
+          <div className="relative w-full md:w-96">
+            <span
+              aria-hidden="true"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
             >
-              {salvando
-                ? 'Salvando...'
-                : produtoEditando
-                  ? 'Salvar Alterações'
-                  : 'Salvar Produto'}
-            </button>
+              🔍
+            </span>
+
+            <input
+              type="text"
+              placeholder="Buscar produto..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full border rounded-xl pl-11 pr-4 py-3"
+            />
           </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="max-h-[60vh] overflow-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-100 sticky top-0 z-10 border-b border-gray-200">
                 <tr>
                   <th className="text-left p-4 text-gray-600">
                     Produto
@@ -575,17 +513,17 @@ export default function Produtos() {
                       Carregando produtos...
                     </td>
                   </tr>
-                ) : produtos.length === 0 ? (
+                ) : produtosFiltrados.length === 0 ? (
                   <tr>
                     <td
                       colSpan={5}
                       className="p-8 text-center text-gray-500"
                     >
-                      Nenhum produto cadastrado.
+                      Nenhum produto encontrado.
                     </td>
                   </tr>
                 ) : (
-                  produtos.map((produto) => (
+                  produtosFiltrados.map((produto) => (
                     <tr
                       key={produto.id}
                       className="border-t hover:bg-gray-50"
@@ -661,6 +599,129 @@ export default function Produtos() {
             </table>
           </div>
         </div>
+
+        {openProdutoModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-4xl rounded-2xl bg-white shadow-xl">
+              <div className="flex items-start justify-between border-b px-6 py-5">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">
+                    {produtoEditando
+                      ? 'Editar Produto'
+                      : 'Novo Produto'}
+                  </h2>
+
+                  {produtoEditando && (
+                    <p className="mt-1 text-sm text-gray-500">
+                      Atualize as informações do produto. As alterações serão utilizadas apenas em novos orçamentos e pedidos.
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={fecharProdutoModal}
+                  disabled={salvando}
+                  aria-label="Fechar"
+                  className="text-2xl leading-none text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-2">
+                      Nome <span className="text-red-500">*</span>
+                    </label>
+
+                    <input
+                      type="text"
+                      placeholder="Nome do produto"
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
+                      disabled={salvando}
+                      className="w-full border rounded-xl px-4 py-3 disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-2">
+                      Categoria
+                    </label>
+
+                    <input
+                      type="text"
+                      placeholder="Categoria"
+                      value={categoria}
+                      onChange={(e) => setCategoria(e.target.value)}
+                      disabled={salvando}
+                      className="w-full border rounded-xl px-4 py-3 disabled:bg-gray-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-2">
+                      Margem desejada (%)
+                    </label>
+
+                    <input
+                      type="number"
+                      min="0"
+                      max="99.99"
+                      step="0.01"
+                      placeholder="Margem (%)"
+                      value={margemLucro}
+                      onChange={(e) =>
+                        setMargemLucro(e.target.value)
+                      }
+                      disabled={salvando}
+                      className="w-full border rounded-xl px-4 py-3 disabled:bg-gray-100"
+                    />
+                  </div>
+                </div>
+
+                <label className="block text-sm text-gray-600 mb-2">
+                  Descrição
+                </label>
+
+                <textarea
+                  rows="3"
+                  placeholder="Descrição do produto"
+                  value={descricao}
+                  onChange={(e) => setDescricao(e.target.value)}
+                  disabled={salvando}
+                  className="w-full border rounded-xl px-4 py-3 disabled:bg-gray-100"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 border-t px-6 py-4">
+                <button
+                  type="button"
+                  onClick={cancelarEdicao}
+                  disabled={salvando}
+                  className="bg-white border border-gray-300 text-gray-700 px-6 py-3 rounded-xl hover:bg-gray-100 transition whitespace-nowrap disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={salvarProduto}
+                  disabled={salvando}
+                  className="bg-gray-900 text-white px-6 py-3 rounded-xl hover:bg-gray-800 transition whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {salvando
+                    ? 'Salvando...'
+                    : produtoEditando
+                      ? 'Salvar Alterações'
+                      : 'Salvar Produto'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <FichaTecnicaModal
           open={openFicha}

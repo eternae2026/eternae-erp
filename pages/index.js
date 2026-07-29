@@ -692,7 +692,7 @@ function dadosDespesasCategoria() {
     <div className="flex min-h-screen bg-gray-100">
       <Sidebar />
 
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-6 lg:p-8 xl:p-10">
 
         {carregando ? (
           <div className="min-h-[70vh] flex items-center justify-center">
@@ -729,20 +729,22 @@ function dadosDespesasCategoria() {
           <>
 
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">
+          <h1 className="text-4xl font-bold tracking-tight text-gray-900">
             Dashboard
           </h1>
 
-          <p className="text-gray-500">
+          <p className="text-gray-500 mt-1">
             Visão geral da operação, financeiro, metas e alertas da Eternaê.
           </p>
 
-          <p className="text-sm text-gray-400 mt-1">
-            Referência: {mesAtual()}
-          </p>
+          <div className="mt-3">
+            <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-sm font-medium text-gray-500 shadow-sm">
+              Referência: {mesAtual()}
+            </span>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+        <div className="bg-white rounded-2xl border border-gray-100 p-7 shadow-sm mb-8">
   <h2 className="text-2xl font-bold text-gray-800">
     {saudacaoAtual()}, Renata ☀️
   </h2>
@@ -764,10 +766,10 @@ function dadosDespesasCategoria() {
   </p>
 </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 xl:grid-cols-3 items-stretch gap-6 mb-10">
 
   {/* COLUNA 1 — OPERAÇÃO */}
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
+  <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
     <div className="mb-5">
       <h2 className="text-xl font-bold text-gray-800">
         📦 Operação
@@ -779,7 +781,7 @@ function dadosDespesasCategoria() {
     </div>
 
     <div className="space-y-3">
-      <div className="bg-yellow-50 rounded-xl p-4 flex items-center justify-between">
+      <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600">
             Aguardando pagamento
@@ -795,7 +797,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-blue-50 rounded-xl p-4 flex items-center justify-between">
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600">
             Arte e aprovação
@@ -812,7 +814,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-purple-50 rounded-xl p-4 flex items-center justify-between">
+      <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600">
             Em produção
@@ -828,7 +830,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-green-50 rounded-xl p-4 flex items-center justify-between">
+      <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600">
             Prontos para entrega
@@ -857,7 +859,7 @@ function dadosDespesasCategoria() {
   </div>
 
   {/* COLUNA 2 — FINANCEIRO */}
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
+  <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
     <div className="mb-5">
       <h2 className="text-xl font-bold text-gray-800">
         💰 Financeiro
@@ -869,7 +871,7 @@ function dadosDespesasCategoria() {
     </div>
 
     <div className="grid grid-cols-2 gap-3">
-      <div className="bg-green-50 rounded-xl p-4">
+      <div className="bg-green-50 border border-green-100 rounded-xl p-4">
         <p className="text-xs text-gray-500">
           Receitas
         </p>
@@ -879,7 +881,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-red-50 rounded-xl p-4">
+      <div className="bg-red-50 border border-red-100 rounded-xl p-4">
         <p className="text-xs text-gray-500">
           Despesas
         </p>
@@ -889,7 +891,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-blue-50 rounded-xl p-4">
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
         <p className="text-xs text-gray-500">
           Resultado
         </p>
@@ -905,7 +907,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-yellow-50 rounded-xl p-4">
+      <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4">
         <p className="text-xs text-gray-500">
           A receber
         </p>
@@ -922,7 +924,7 @@ function dadosDespesasCategoria() {
       </div>
     </div>
 
-    <div className="mt-5 border-t pt-5">
+    <div className="mt-4 border-t pt-4">
       <div className="flex items-end justify-between gap-4">
         <div>
           <p className="text-sm text-gray-500">
@@ -945,16 +947,16 @@ function dadosDespesasCategoria() {
         </div>
       </div>
 
-      <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden mt-4">
+      <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden mt-3">
         <div
-          className={`${corBarraMeta()} h-4 rounded-full transition-all`}
+          className={`${corBarraMeta()} h-3 rounded-full transition-all`}
           style={{
             width: `${progressoMeta()}%`
           }}
         />
       </div>
 
-      <p className="text-sm text-gray-500 mt-3">
+      <p className="text-sm text-gray-500 mt-2">
         Faltam{' '}
         <strong>
           {formatarMoeda(faltaParaMeta())}
@@ -965,7 +967,7 @@ function dadosDespesasCategoria() {
   </div>
 
   {/* COLUNA 3 — INTELIGÊNCIA E ALERTAS */}
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
+  <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
     <div className="mb-5">
       <h2 className="text-xl font-bold text-gray-800">
         💡 Inteligência e alertas
@@ -1016,7 +1018,7 @@ function dadosDespesasCategoria() {
         </span>
       </div>
 
-      <div className="bg-gray-900 text-white rounded-xl p-5 mt-4">
+      <div className="bg-slate-800 text-white rounded-xl p-5 mt-4">
   <p className="text-sm text-gray-300">
     💡 Visão rápida
   </p>
@@ -1048,9 +1050,9 @@ function dadosDespesasCategoria() {
 
 </div>
 
-<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
 
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
+  <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm h-full">
     <p className="text-sm text-gray-500">
       Ticket médio do mês
     </p>
@@ -1060,7 +1062,7 @@ function dadosDespesasCategoria() {
     </p>
   </div>
 
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
+  <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm h-full">
     <p className="text-sm text-gray-500">
       Clientes atendidos no mês
     </p>
@@ -1070,7 +1072,7 @@ function dadosDespesasCategoria() {
     </p>
   </div>
 
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
+  <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm h-full">
     <p className="text-sm text-gray-500">
       Pedidos entregues no mês
     </p>
@@ -1080,7 +1082,7 @@ function dadosDespesasCategoria() {
     </p>
   </div>
 
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
+  <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm h-full">
     <p className="text-sm text-gray-500">
       Momentos eternizados 💛
     </p>
@@ -1097,7 +1099,7 @@ function dadosDespesasCategoria() {
 </div>
 
 {/* PRIMEIRA LINHA */}
-<div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+<div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-10">
 
   <GraficoEvolucaoFinanceira
     dados={dadosEvolucaoFinanceira()}
@@ -1110,7 +1112,7 @@ function dadosDespesasCategoria() {
 </div>
 
 {/* SEGUNDA LINHA */}
-<div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+<div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-10">
 
   <GraficoProdutosVendidos
     dados={produtosMaisVendidos()}
@@ -1124,7 +1126,7 @@ function dadosDespesasCategoria() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
 
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -1173,7 +1175,7 @@ function dadosDespesasCategoria() {
 
           </div>
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
 
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -1216,7 +1218,7 @@ function dadosDespesasCategoria() {
 
           </div>
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
 
             <div className="flex items-center justify-between mb-5">
               <div>

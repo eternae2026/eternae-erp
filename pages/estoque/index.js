@@ -583,25 +583,32 @@ function vendavelVisual(item) {
         </div>
 
 <div className="mb-4">
+  <div className="relative w-full md:w-96">
+    <span
+      aria-hidden="true"
+      className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+    >
+      🔍
+    </span>
 
-  <input
-    type="text"
-    placeholder="Buscar item..."
-    value={buscaItem}
-    onChange={(e) =>
-      setBuscaItem(e.target.value)
-    }
-    className="
-      w-full
-      md:w-96
-      border
-      rounded-xl
-      px-4
-      py-3
-      bg-white
-    "
-  />
-
+    <input
+      type="text"
+      placeholder="Buscar item..."
+      value={buscaItem}
+      onChange={(e) =>
+        setBuscaItem(e.target.value)
+      }
+      className="
+        w-full
+        border
+        rounded-xl
+        pl-11
+        pr-4
+        py-3
+        bg-white
+      "
+    />
+  </div>
 </div>
 
 <div className="flex gap-3 mb-4">
@@ -683,21 +690,21 @@ function vendavelVisual(item) {
     <table className="w-full table-fixed text-xs">
 
       <colgroup>
-        <col className="w-[10%]" />
-        <col className="w-[7%]" />
-        <col className="w-[6%]" />
-        <col className="w-[5%]" />
-        <col className="w-[6%]" />
-        <col className="w-[6%]" />
-        <col className="w-[6%]" />
-        <col className="w-[5%]" />
-        <col className="w-[5%]" />
-        <col className="w-[6%]" />
-        <col className="w-[7%]" />
-        <col className="w-[5%]" />
-        <col className="w-[7%]" />
-        <col className="w-[6%]" />
         <col className="w-[9%]" />
+        <col className="w-[7%]" />
+        <col className="w-[6%]" />
+        <col className="w-[5%]" />
+        <col className="w-[6%]" />
+        <col className="w-[6%]" />
+        <col className="w-[6%]" />
+        <col className="w-[5%]" />
+        <col className="w-[5%]" />
+        <col className="w-[6%]" />
+        <col className="w-[7%]" />
+        <col className="w-[5%]" />
+        <col className="w-[7%]" />
+        <col className="w-[8%]" />
+        <col className="w-[8%]" />
         <col className="w-[4%]" />
       </colgroup>
 
@@ -847,27 +854,26 @@ function vendavelVisual(item) {
                       {formatarMoeda(item.custo_unitario)}
                     </td>
 
-                    <td className="p-4">
-
+                    <td className="px-1 py-4 text-center whitespace-nowrap">
   <Badge
-    variant={
-      status === 'OK'
-        ? 'success'
-        : status === 'Baixo'
+  size="sm"
+  variant={
+    status === 'OK'
+      ? 'success'
+      : status === 'Baixo'
         ? 'warning'
         : 'danger'
-    }
-  >
-    {status}
-  </Badge>
-
+  }
+>
+  {status}
+</Badge>
 </td>
 
                     <td className="p-4">
                       {item.fornecedor || '-'}
                     </td>
 
-                    <td className="p-4 relative">
+                    <td className="py-4 pl-1 pr-3 text-center relative">
 
   <button
     type="button"

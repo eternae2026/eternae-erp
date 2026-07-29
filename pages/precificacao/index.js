@@ -229,22 +229,7 @@ export default function Precificacao() {
 
           <div className="flex flex-wrap gap-3">
 
-            <button
-              type="button"
-              className="
-                border border-gray-300
-                bg-white
-                text-gray-700
-                px-5 py-3
-                rounded-xl
-                font-medium
-                hover:bg-gray-50
-                transition
-              "
-            >
-              Configurações
-            </button>
-
+            
             <button
                 type="button"
                 onClick={abrirNovaPrecificacao}
@@ -326,24 +311,41 @@ export default function Precificacao() {
                 </p>
               </div>
 
-              <div className="w-full lg:w-80">
-                <input
-                  type="text"
-                  value={busca}
-                  onChange={event => setBusca(event.target.value)}
-                  placeholder="Buscar produto..."
-                  className="
-                    w-full
-                    border border-gray-300
-                    rounded-xl
-                    px-4 py-3
-                    outline-none
-                    focus:ring-2
-                    focus:ring-gray-200
-                    focus:border-gray-400
-                  "
-                />
-              </div>
+              <div className="relative w-full lg:w-80">
+
+  <span
+    className="
+      absolute
+      left-4
+      top-1/2
+      -translate-y-1/2
+      text-lg
+      pointer-events-none
+    "
+  >
+    🔍
+  </span>
+
+  <input
+    type="text"
+    value={busca}
+    onChange={event => setBusca(event.target.value)}
+    placeholder="Buscar produto..."
+    className="
+      w-full
+      border border-gray-300
+      rounded-xl
+      pl-12
+      pr-4
+      py-3
+      outline-none
+      focus:ring-2
+      focus:ring-gray-200
+      focus:border-gray-400
+    "
+  />
+
+</div>
 
             </div>
 

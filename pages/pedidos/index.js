@@ -1306,13 +1306,19 @@ async function confirmarCancelamentoPedido(motivo) {
         <div className="bg-white rounded-2xl p-4 shadow-sm mb-6">
   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
 
-    <input
-      type="text"
-      placeholder="Buscar cliente..."
-      value={buscaCliente}
-      onChange={(e) => setBuscaCliente(e.target.value)}
-      className="border rounded-xl px-4 py-3 md:col-span-2"
-    />
+    <div className="relative md:col-span-2">
+  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+    🔍
+  </span>
+
+  <input
+    type="text"
+    placeholder="Buscar cliente..."
+    value={buscaCliente}
+    onChange={(e) => setBuscaCliente(e.target.value)}
+    className="w-full border rounded-xl pl-11 pr-4 py-3"
+  />
+</div>
 
    <select
   value={tipoConsulta}
@@ -1507,6 +1513,7 @@ async function confirmarCancelamentoPedido(motivo) {
 
 {visualizacao === 'lista' && (
   <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+    <div className="max-h-[560px] overflow-y-auto">
 
     <table className="w-full">
       <thead className="bg-gray-50">
@@ -1618,8 +1625,9 @@ async function confirmarCancelamentoPedido(motivo) {
           </tr>
         ))}
       </tbody>
-    </table>
+        </table>
 
+    </div>
   </div>
 )}
 

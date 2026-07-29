@@ -273,19 +273,28 @@ export default function Clientes() {
         </div>
 
         <div className="mb-6">
-          <input
-            type="text"
-            placeholder="Buscar cliente..."
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            className="w-full md:w-96 border rounded-xl px-4 py-3"
-          />
+          <div className="relative w-full md:w-96">
+            <span
+              aria-hidden="true"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+            >
+              🔍
+            </span>
+
+            <input
+              type="text"
+              placeholder="Buscar cliente..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full border rounded-xl pl-11 pr-4 py-3"
+            />
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="max-h-[60vh] overflow-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-100 sticky top-0 z-10 border-b border-gray-200">
                 <tr>
                   <th className="text-left p-4 text-gray-600">
                     Nome

@@ -399,9 +399,9 @@ export default function ContasPagar() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
+  <div className="max-h-[60vh] overflow-auto">
+    <table className="w-full">
+      <thead className="bg-gray-100 sticky top-0 z-10 border-b border-gray-200">
                 <tr>
                   <th className="text-left p-4">
                     Descrição
