@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
 import InsumoModal from '../../components/InsumoModal'
+import MovimentacaoEstoqueModal from '../../components/MovimentacaoEstoqueModal'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
 import Badge from '../../components/ui/Badge'
@@ -9,6 +10,7 @@ import { supabase } from '../../lib/supabase'
 export default function Estoque() {
   const [itensEstoque, setItensEstoque] = useState([])
   const [openModal, setOpenModal] = useState(false)
+  const [openMovimentacaoModal, setOpenMovimentacaoModal] = useState(false)
   const [insumoEditando, setInsumoEditando] = useState(null)
   const [menuAberto, setMenuAberto] = useState(null)
   const [filtroTipo, setFiltroTipo] =
@@ -518,7 +520,7 @@ function vendavelVisual(item) {
 
           <div>
             <h1 className="text-3xl font-bold text-gray-800">
-              Estoque
+              Controle de Estoque
             </h1>
 
             <p className="text-gray-500">
@@ -526,15 +528,24 @@ function vendavelVisual(item) {
             </p>
           </div>
 
-                    <Button
-            size="lg"
-            onClick={() => {
-              setInsumoEditando(null)
-              setOpenModal(true)
-            }}
-          >
-            ➕ Novo Item
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Button
+              size="lg"
+              onClick={() => setOpenMovimentacaoModal(true)}
+            >
+              🔄 Movimentação
+            </Button>
+
+            <Button
+              size="lg"
+              onClick={() => {
+                setInsumoEditando(null)
+                setOpenModal(true)
+              }}
+            >
+              ➕ Novo Item
+            </Button>
+          </div>
 
         </div>
 
@@ -1139,6 +1150,13 @@ function vendavelVisual(item) {
           }}
           onSave={salvarInsumo}
           insumo={insumoEditando}
+        />
+
+        <MovimentacaoEstoqueModal
+          open={openMovimentacaoModal}
+          onClose={() => setOpenMovimentacaoModal(false)}
+          itensEstoque={itensEstoque}
+          onSuccess={carregarEstoque}
         />
 
       </main>

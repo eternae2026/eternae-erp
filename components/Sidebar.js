@@ -5,8 +5,14 @@ import { useRouter } from 'next/router'
 export default function Sidebar() {
   const router = useRouter()
 
+  const estaNoEstoque =
+    router.pathname.startsWith('/estoque')
+
   const estaNoFinanceiro =
     router.pathname.startsWith('/financeiro')
+
+  const [estoqueAberto, setEstoqueAberto] =
+    useState(estaNoEstoque)
 
   const [financeiroAberto, setFinanceiroAberto] =
     useState(estaNoFinanceiro)
@@ -92,12 +98,56 @@ export default function Sidebar() {
           🏭 Produção
         </Link>
 
-        <Link
-          href="/estoque"
-          className={classeLink('/estoque')}
-        >
-          📦 Estoque
-        </Link>
+        <div className="mt-1">
+          <button
+            type="button"
+            onClick={() =>
+              setEstoqueAberto(
+                !estoqueAberto
+              )
+            }
+            className={`
+              w-full
+              flex items-center justify-between
+              px-3 py-2
+              rounded-xl
+              transition
+              ${
+                estaNoEstoque
+                  ? 'bg-gray-800 text-white font-semibold'
+                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              }
+            `}
+          >
+            <span>📦 Estoque</span>
+
+            <span className="text-xs">
+              {estoqueAberto ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {estoqueAberto && (
+            <div className="mt-2 ml-4 pl-3 border-l border-gray-700 flex flex-col gap-1">
+              <Link
+                href="/estoque"
+                className={classeSubmenu(
+                  '/estoque'
+                )}
+              >
+                📦 Controle de Estoque
+              </Link>
+
+              <Link
+                href="/estoque/movimentacoes"
+                className={classeSubmenu(
+                  '/estoque/movimentacoes'
+                )}
+              >
+                🔄 Histórico de Movimentações
+              </Link>
+            </div>
+          )}
+        </div>
 
         <Link
           href="/precificacao"
