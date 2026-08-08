@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
+import { supabase } from '../lib/supabase'
 
 export default function Sidebar() {
   const router = useRouter()
@@ -16,6 +17,9 @@ export default function Sidebar() {
 
   const [financeiroAberto, setFinanceiroAberto] =
     useState(estaNoFinanceiro)
+
+  const [saindo, setSaindo] =
+    useState(false)
 
   function linkAtivo(caminho) {
     return router.pathname === caminho
@@ -47,6 +51,42 @@ export default function Sidebar() {
           : 'text-gray-400 hover:bg-gray-800 hover:text-white'
       }
     `
+  }
+
+  async function sair() {
+    if (saindo) return
+
+    try {
+      setSaindo(true)
+
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        console.error(
+          'Erro ao encerrar sessão:',
+          error
+        )
+
+        alert(
+          'Não foi possível encerrar a sessão. Tente novamente.'
+        )
+
+        return
+      }
+
+      router.replace('/login')
+    } catch (error) {
+      console.error(
+        'Erro ao encerrar sessão:',
+        error
+      )
+
+      alert(
+        'Não foi possível encerrar a sessão. Tente novamente.'
+      )
+    } finally {
+      setSaindo(false)
+    }
   }
 
   return (
@@ -263,6 +303,30 @@ export default function Sidebar() {
         >
           ⚙️ Configurações
         </Link>
+
+        <div className="mt-6 pt-5 border-t border-gray-700">
+          <button
+            type="button"
+            onClick={sair}
+            disabled={saindo}
+            className="
+              w-full
+              flex items-center
+              px-3 py-2
+              rounded-xl
+              text-gray-300
+              hover:bg-red-900/40
+              hover:text-white
+              transition
+              disabled:opacity-50
+              disabled:cursor-not-allowed
+            "
+          >
+            {saindo
+              ? '⏳ Saindo...'
+              : '🚪 Sair'}
+          </button>
+        </div>
       </nav>
     </aside>
   )
