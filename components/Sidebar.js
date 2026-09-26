@@ -9,11 +9,17 @@ export default function Sidebar() {
   const estaNoEstoque =
     router.pathname.startsWith('/estoque')
 
+  const estaNaPrecificacao =
+    router.pathname.startsWith('/precificacao')
+
   const estaNoFinanceiro =
     router.pathname.startsWith('/financeiro')
 
   const [estoqueAberto, setEstoqueAberto] =
     useState(estaNoEstoque)
+
+  const [precificacaoAberta, setPrecificacaoAberta] =
+    useState(estaNaPrecificacao)
 
   const [financeiroAberto, setFinanceiroAberto] =
     useState(estaNoFinanceiro)
@@ -189,12 +195,56 @@ export default function Sidebar() {
           )}
         </div>
 
-        <Link
-          href="/precificacao"
-          className={classeLink('/precificacao')}
-        >
-          💰 Precificação
-        </Link>
+        <div className="mt-1">
+          <button
+            type="button"
+            onClick={() =>
+              setPrecificacaoAberta(
+                !precificacaoAberta
+              )
+            }
+            className={`
+              w-full
+              flex items-center justify-between
+              px-3 py-2
+              rounded-xl
+              transition
+              ${
+                estaNaPrecificacao
+                  ? 'bg-gray-800 text-white font-semibold'
+                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              }
+            `}
+          >
+            <span>💰 Precificação</span>
+
+            <span className="text-xs">
+              {precificacaoAberta ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {precificacaoAberta && (
+            <div className="mt-2 ml-4 pl-3 border-l border-gray-700 flex flex-col gap-1">
+              <Link
+                href="/precificacao"
+                className={classeSubmenu(
+                  '/precificacao'
+                )}
+              >
+                💰 Precificação de Produtos
+              </Link>
+
+              <Link
+                href="/precificacao/custos-operacionais"
+                className={classeSubmenu(
+                  '/precificacao/custos-operacionais'
+                )}
+              >
+                🧾 Custos Operacionais
+              </Link>
+            </div>
+          )}
+        </div>
 
         <Link
           href="/metas"
