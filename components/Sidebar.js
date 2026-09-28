@@ -15,6 +15,9 @@ export default function Sidebar() {
   const estaNoFinanceiro =
     router.pathname.startsWith('/financeiro')
 
+  const estaNasConfiguracoes =
+    router.pathname.startsWith('/configuracoes')
+
   const [estoqueAberto, setEstoqueAberto] =
     useState(estaNoEstoque)
 
@@ -23,6 +26,9 @@ export default function Sidebar() {
 
   const [financeiroAberto, setFinanceiroAberto] =
     useState(estaNoFinanceiro)
+
+  const [configuracoesAbertas, setConfiguracoesAbertas] =
+    useState(estaNasConfiguracoes)
 
   const [saindo, setSaindo] =
     useState(false)
@@ -345,14 +351,56 @@ export default function Sidebar() {
           📊 Relatórios
         </Link>
 
-        <Link
-          href="/configuracoes"
-          className={classeLink(
-            '/configuracoes'
+        <div className="mt-1">
+          <button
+            type="button"
+            onClick={() =>
+              setConfiguracoesAbertas(
+                !configuracoesAbertas
+              )
+            }
+            className={`
+              w-full
+              flex items-center justify-between
+              px-3 py-2
+              rounded-xl
+              transition
+              ${
+                estaNasConfiguracoes
+                  ? 'bg-gray-800 text-white font-semibold'
+                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              }
+            `}
+          >
+            <span>⚙️ Configurações</span>
+
+            <span className="text-xs">
+              {configuracoesAbertas ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {configuracoesAbertas && (
+            <div className="mt-2 ml-4 pl-3 border-l border-gray-700 flex flex-col gap-1">
+              <Link
+                href="/configuracoes"
+                className={classeSubmenu(
+                  '/configuracoes'
+                )}
+              >
+                ⚙️ Configurações gerais
+              </Link>
+
+              <Link
+                href="/configuracoes/embalagens"
+                className={classeSubmenu(
+                  '/configuracoes/embalagens'
+                )}
+              >
+                📦 Embalagens
+              </Link>
+            </div>
           )}
-        >
-          ⚙️ Configurações
-        </Link>
+        </div>
 
         <div className="mt-6 pt-5 border-t border-gray-700">
           <button
