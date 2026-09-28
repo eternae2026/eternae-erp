@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import RelatorioDetalheModal from '../../components/RelatorioDetalheModal'
 import Sidebar from '../../components/Sidebar'
 import { supabase } from '../../lib/supabase'
+import { obterTotalCustosOperacionais } from '../../lib/custosOperacionais'
 
 export default function Relatorios() {
   const [movimentacoes, setMovimentacoes] = useState([])
@@ -9,6 +10,7 @@ export default function Relatorios() {
   const [contasPagar, setContasPagar] = useState([])
   const [pedidos, setPedidos] = useState([])
   const [configuracao, setConfiguracao] = useState(null)
+  const [totalCustosOperacionais, setTotalCustosOperacionais] = useState(0)
   const [produtos, setProdutos] = useState([])
   const [carregando, setCarregando] = useState(true)
   const [erroCarregamento, setErroCarregamento] = useState('')
@@ -35,6 +37,8 @@ export default function Relatorios() {
     setErroCarregamento('')
 
     try {
+      const totalCustosOperacionaisAtivos = await obterTotalCustosOperacionais()
+
       const [
         resultadoMovimentacoes,
         resultadoReceber,
@@ -171,6 +175,7 @@ export default function Relatorios() {
       setContasPagar(resultadoPagar.data || [])
       setPedidos(resultadoPedidos.data || [])
       setConfiguracao(resultadoConfiguracao.data?.[0] || null)
+      setTotalCustosOperacionais(Number(totalCustosOperacionaisAtivos || 0))
       setProdutos(resultadoProdutos.data || [])
     } catch (error) {
       console.log('Erro inesperado ao carregar relatórios:', error)
@@ -613,16 +618,8 @@ export default function Relatorios() {
     return rankingItens
   }
 
-  function custosFixosTotaisPrecificacao() {
-    if (!configuracao) return 0
-
-    return (
-      Number(configuracao.energia || 0) +
-      Number(configuracao.internet || 0) +
-      Number(configuracao.canva || 0) +
-      Number(configuracao.dominio || 0) +
-      Number(configuracao.outros_custos || 0)
-    )
+  function custosOperacionaisTotaisPrecificacao() {
+    return Number(totalCustosOperacionais || 0)
   }
 
   function horasMensaisPrecificacao() {
@@ -642,11 +639,11 @@ export default function Relatorios() {
     return Number(configuracao?.pro_labore_desejado || 0) / horas
   }
 
-  function custoFixoPorHoraPrecificacao() {
+  function custoOperacionalPorHoraPrecificacao() {
     const horas = horasMensaisPrecificacao()
     if (horas <= 0) return 0
 
-    return custosFixosTotaisPrecificacao() / horas
+    return custosOperacionaisTotaisPrecificacao() / horas
   }
 
   function custoInsumosProduto(produto) {
@@ -665,15 +662,15 @@ export default function Relatorios() {
     return horasProduto(produto) * valorHoraPrecificacao()
   }
 
-  function custoFixoProduto(produto) {
-    return horasProduto(produto) * custoFixoPorHoraPrecificacao()
+  function custoOperacionalProduto(produto) {
+    return horasProduto(produto) * custoOperacionalPorHoraPrecificacao()
   }
 
   function custoTotalProduto(produto) {
     return (
       custoInsumosProduto(produto) +
       custoMaoDeObraProduto(produto) +
-      custoFixoProduto(produto)
+      custoOperacionalProduto(produto)
     )
   }
 
@@ -709,16 +706,8 @@ export default function Relatorios() {
     return 'bg-red-100 text-red-700'
   }
 
-  function custosFixosTotais() {
-    if (!configuracao) return 0
-
-    return (
-      Number(configuracao.energia || 0) +
-      Number(configuracao.internet || 0) +
-      Number(configuracao.canva || 0) +
-      Number(configuracao.dominio || 0) +
-      Number(configuracao.outros_custos || 0)
-    )
+  function custosOperacionaisTotais() {
+    return Number(totalCustosOperacionais || 0)
   }
 
   function metaMinima() {
@@ -726,7 +715,7 @@ export default function Relatorios() {
 
     return (
       Number(configuracao.pro_labore_desejado || 0) +
-      custosFixosTotais()
+      custosOperacionaisTotais()
     )
   }
 
@@ -1126,7 +1115,7 @@ export default function Relatorios() {
         Produto: produto.nome,
         Insumos: formatarMoeda(custoInsumosProduto(produto)),
         Mao_de_obra: formatarMoeda(custoMaoDeObraProduto(produto)),
-        Custo_fixo: formatarMoeda(custoFixoProduto(produto)),
+        Custo_operacional: formatarMoeda(custoOperacionalProduto(produto)),
         Custo_total: formatarMoeda(custoTotalProduto(produto)),
         Preco_atual: formatarMoeda(precoAtualProduto(produto)),
         Lucro_estimado: formatarMoeda(lucroEstimadoProduto(produto)),
@@ -2152,7 +2141,7 @@ export default function Relatorios() {
                   <th className="text-left p-4 text-gray-600">Produto</th>
                   <th className="text-right p-4 text-gray-600">Insumos</th>
                   <th className="text-right p-4 text-gray-600">Mão de obra</th>
-                  <th className="text-right p-4 text-gray-600">Custo fixo</th>
+                  <th className="text-right p-4 text-gray-600">Custo operacional</th>
                   <th className="text-right p-4 text-gray-600">Custo total</th>
                   <th className="text-right p-4 text-gray-600">Preço atual</th>
                   <th className="text-right p-4 text-gray-600">Lucro</th>
@@ -2182,7 +2171,7 @@ export default function Relatorios() {
                         {formatarMoeda(custoMaoDeObraProduto(produto))}
                       </td>
                       <td className="p-4 text-right">
-                        {formatarMoeda(custoFixoProduto(produto))}
+                        {formatarMoeda(custoOperacionalProduto(produto))}
                       </td>
                       <td className="p-4 text-right font-semibold">
                         {formatarMoeda(custoTotalProduto(produto))}

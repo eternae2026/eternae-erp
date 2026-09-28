@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import Sidebar from '../components/Sidebar'
 import { supabase } from '../lib/supabase'
+import { obterTotalCustosOperacionais } from '../lib/custosOperacionais'
 import GraficoEvolucaoFinanceira from '../components/dashboard/GraficoEvolucaoFinanceira'
 import GraficoDespesasCategoria from '../components/dashboard/GraficoDespesasCategoria'
 import GraficoProdutosVendidos from '../components/dashboard/GraficoProdutosVendidos'
@@ -14,6 +15,7 @@ export default function Home() {
   const [pedidos, setPedidos] = useState([])
   const [estoque, setEstoque] = useState([])
   const [configuracao, setConfiguracao] = useState(null)
+  const [totalCustosOperacionais, setTotalCustosOperacionais] = useState(0)
   const [movimentacoesDashboard, setMovimentacoesDashboard] = useState([])
   const [carregando, setCarregando] = useState(true)
   const [erroDashboard, setErroDashboard] = useState('')
@@ -28,6 +30,7 @@ export default function Home() {
 
     const resultados = await Promise.allSettled([
       carregarConfiguracao(),
+      carregarCustosOperacionais(),
       carregarFinanceiroMes(),
       carregarMovimentacoesDashboard(),
       carregarRecebimentosPendentes(),
@@ -69,141 +72,103 @@ export default function Home() {
     setConfiguracao(data)
   }
 
+  async function carregarCustosOperacionais() {
+    try {
+      const total = await obterTotalCustosOperacionais()
+      setTotalCustosOperacionais(Number(total || 0))
+    } catch (error) {
+      console.log('Erro ao carregar custos operacionais:', error)
+      throw error
+    }
+  }
+
   async function carregarFinanceiroMes() {
-    const hoje = new Date()
+  const hoje = new Date()
 
-    const primeiroDia = new Date(
-      hoje.getFullYear(),
-      hoje.getMonth(),
-      1
+  const primeiroDia = new Date(
+    hoje.getFullYear(),
+    hoje.getMonth(),
+    1
+  )
+
+  const proximoMes = new Date(
+    hoje.getFullYear(),
+    hoje.getMonth() + 1,
+    1
+  )
+
+  function formatarDataBanco(data) {
+    const ano = data.getFullYear()
+    const mes = String(data.getMonth() + 1).padStart(2, '0')
+    const dia = String(data.getDate()).padStart(2, '0')
+
+    return `${ano}-${mes}-${dia}`
+  }
+
+  const { data, error } = await supabase
+    .from('movimentacoes_financeiras')
+    .select(`
+      tipo,
+      valor,
+      data_movimento
+    `)
+    .gte(
+      'data_movimento',
+      formatarDataBanco(primeiroDia)
+    )
+    .lt(
+      'data_movimento',
+      formatarDataBanco(proximoMes)
     )
 
-    const proximoMes = new Date(
-      hoje.getFullYear(),
-      hoje.getMonth() + 1,
-      1
+  if (error) {
+    console.log(
+      'Erro ao carregar movimentações do mês:',
+      error
     )
+    throw error
+  }
 
-    function formatarDataBanco(data) {
-      const ano = data.getFullYear()
-      const mes = String(data.getMonth() + 1).padStart(2, '0')
-      const dia = String(data.getDate()).padStart(2, '0')
-
-      return `${ano}-${mes}-${dia}`
-    }
-
-    const inicioMes = formatarDataBanco(primeiroDia)
-    const inicioProximoMes = formatarDataBanco(proximoMes)
-
-    const [resultadoReceitas, resultadoDespesas] = await Promise.all([
-      supabase
-        .from('financeiro')
-        .select('valor, status, data_pagamento')
-        .eq('status', 'Recebido')
-        .gte('data_pagamento', inicioMes)
-        .lt('data_pagamento', inicioProximoMes),
-      supabase
-        .from('contas_pagar')
-        .select('valor, data_vencimento, status')
-        .gte('data_vencimento', inicioMes)
-        .lt('data_vencimento', inicioProximoMes)
-    ])
-
-    if (resultadoReceitas.error) {
-      console.log(
-        'Erro ao carregar receitas recebidas do mês:',
-        resultadoReceitas.error
-      )
-      throw resultadoReceitas.error
-    }
-
-    if (resultadoDespesas.error) {
-      console.log(
-        'Erro ao carregar despesas do mês:',
-        resultadoDespesas.error
-      )
-      throw resultadoDespesas.error
-    }
-
-    const totalReceitas = (resultadoReceitas.data || []).reduce(
-      (total, item) => total + Number(item.valor || 0),
+  const entradas = (data || [])
+    .filter(item => item.tipo === 'Entrada')
+    .reduce(
+      (total, item) =>
+        total + Number(item.valor || 0),
       0
     )
 
-    const totalDespesas = (resultadoDespesas.data || [])
-      .filter(item => item.status !== 'cancelado')
-      .reduce(
-        (total, item) => total + Number(item.valor || 0),
-        0
-      )
+  const saidas = (data || [])
+    .filter(item => item.tipo === 'Saída')
+    .reduce(
+      (total, item) =>
+        total + Number(item.valor || 0),
+      0
+    )
 
-    setFaturadoMes(totalReceitas)
-    setSaidasMes(totalDespesas)
-  }
+  setFaturadoMes(entradas)
+  setSaidasMes(saidas)
+}
 
 async function carregarMovimentacoesDashboard() {
-  const [resultadoReceitas, resultadoDespesas] = await Promise.all([
-    supabase
-      .from('financeiro')
-      .select('*')
-      .eq('status', 'Recebido')
-      .not('data_pagamento', 'is', null),
-    supabase
-      .from('contas_pagar')
-      .select(`
-        *,
-        categorias_financeiras (
-          id,
-          nome
-        )
-      `)
-      .not('data_vencimento', 'is', null)
-  ])
+  const { data, error } = await supabase
+    .from('movimentacoes_financeiras')
+    .select(`
+      tipo,
+      categoria,
+      valor,
+      data_movimento
+    `)
+    .order('data_movimento', { ascending: true })
 
-  if (resultadoReceitas.error) {
+  if (error) {
     console.log(
-      'Erro ao carregar receitas dos gráficos do Dashboard:',
-      resultadoReceitas.error
+      'Erro ao carregar movimentações do Dashboard:',
+      error
     )
-    throw resultadoReceitas.error
+    throw error
   }
 
-  if (resultadoDespesas.error) {
-    console.log(
-      'Erro ao carregar despesas dos gráficos do Dashboard:',
-      resultadoDespesas.error
-    )
-    throw resultadoDespesas.error
-  }
-
-  const receitasNormalizadas = (resultadoReceitas.data || []).map(item => ({
-    tipo: 'Entrada',
-    categoria: 'Receitas',
-    valor: Number(item.valor || 0),
-    data_movimento: item.data_pagamento
-  }))
-
-  const despesasNormalizadas = (resultadoDespesas.data || [])
-    .filter(item => String(item.status || '').toLowerCase() !== 'cancelado')
-    .map(item => ({
-      tipo: 'Saída',
-      categoria:
-        item.categorias_financeiras?.nome ||
-        'Sem categoria',
-      valor: Number(item.valor || 0),
-      data_movimento: item.data_vencimento
-    }))
-
-  const movimentacoes = [
-    ...receitasNormalizadas,
-    ...despesasNormalizadas
-  ].sort((a, b) =>
-    String(a.data_movimento || '').localeCompare(
-      String(b.data_movimento || '')
-    )
-  )
-
-  setMovimentacoesDashboard(movimentacoes)
+  setMovimentacoesDashboard(data || [])
 }
 
   async function carregarRecebimentosPendentes() {
@@ -333,16 +298,8 @@ async function carregarMovimentacoesDashboard() {
     return `https://wa.me/55${telefone}`
   }
 
-  function custosFixosTotais() {
-    if (!configuracao) return 0
-
-    return (
-      Number(configuracao.energia || 0) +
-      Number(configuracao.internet || 0) +
-      Number(configuracao.canva || 0) +
-      Number(configuracao.dominio || 0) +
-      Number(configuracao.outros_custos || 0)
-    )
+  function custosOperacionaisTotais() {
+    return Number(totalCustosOperacionais || 0)
   }
 
   function proLabore() {
@@ -350,7 +307,7 @@ async function carregarMovimentacoesDashboard() {
   }
 
   function metaMinima() {
-    return proLabore() + custosFixosTotais()
+    return proLabore() + custosOperacionaisTotais()
   }
 
   function reservaCrescimento() {
@@ -692,7 +649,7 @@ function dadosDespesasCategoria() {
     <div className="flex min-h-screen bg-gray-100">
       <Sidebar />
 
-      <main className="flex-1 p-6 lg:p-8 xl:p-10">
+      <main className="flex-1 p-8">
 
         {carregando ? (
           <div className="min-h-[70vh] flex items-center justify-center">
@@ -729,22 +686,20 @@ function dadosDespesasCategoria() {
           <>
 
         <div className="mb-8">
-          <h1 className="text-4xl font-bold tracking-tight text-gray-900">
+          <h1 className="text-3xl font-bold text-gray-800">
             Dashboard
           </h1>
 
-          <p className="text-gray-500 mt-1">
+          <p className="text-gray-500">
             Visão geral da operação, financeiro, metas e alertas da Eternaê.
           </p>
 
-          <div className="mt-3">
-            <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-sm font-medium text-gray-500 shadow-sm">
-              Referência: {mesAtual()}
-            </span>
-          </div>
+          <p className="text-sm text-gray-400 mt-1">
+            Referência: {mesAtual()}
+          </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 p-7 shadow-sm mb-8">
+        <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
   <h2 className="text-2xl font-bold text-gray-800">
     {saudacaoAtual()}, Renata ☀️
   </h2>
@@ -766,10 +721,10 @@ function dadosDespesasCategoria() {
   </p>
 </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 items-stretch gap-6 mb-10">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
 
   {/* COLUNA 1 — OPERAÇÃO */}
-  <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
+  <div className="bg-white rounded-2xl p-6 shadow-sm">
     <div className="mb-5">
       <h2 className="text-xl font-bold text-gray-800">
         📦 Operação
@@ -781,7 +736,7 @@ function dadosDespesasCategoria() {
     </div>
 
     <div className="space-y-3">
-      <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4 flex items-center justify-between">
+      <div className="bg-yellow-50 rounded-xl p-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600">
             Aguardando pagamento
@@ -797,7 +752,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center justify-between">
+      <div className="bg-blue-50 rounded-xl p-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600">
             Arte e aprovação
@@ -814,7 +769,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 flex items-center justify-between">
+      <div className="bg-purple-50 rounded-xl p-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600">
             Em produção
@@ -830,7 +785,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center justify-between">
+      <div className="bg-green-50 rounded-xl p-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600">
             Prontos para entrega
@@ -859,7 +814,7 @@ function dadosDespesasCategoria() {
   </div>
 
   {/* COLUNA 2 — FINANCEIRO */}
-  <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
+  <div className="bg-white rounded-2xl p-6 shadow-sm">
     <div className="mb-5">
       <h2 className="text-xl font-bold text-gray-800">
         💰 Financeiro
@@ -871,7 +826,7 @@ function dadosDespesasCategoria() {
     </div>
 
     <div className="grid grid-cols-2 gap-3">
-      <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+      <div className="bg-green-50 rounded-xl p-4">
         <p className="text-xs text-gray-500">
           Receitas
         </p>
@@ -881,7 +836,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+      <div className="bg-red-50 rounded-xl p-4">
         <p className="text-xs text-gray-500">
           Despesas
         </p>
@@ -891,7 +846,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+      <div className="bg-blue-50 rounded-xl p-4">
         <p className="text-xs text-gray-500">
           Resultado
         </p>
@@ -907,7 +862,7 @@ function dadosDespesasCategoria() {
         </p>
       </div>
 
-      <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4">
+      <div className="bg-yellow-50 rounded-xl p-4">
         <p className="text-xs text-gray-500">
           A receber
         </p>
@@ -924,7 +879,7 @@ function dadosDespesasCategoria() {
       </div>
     </div>
 
-    <div className="mt-4 border-t pt-4">
+    <div className="mt-5 border-t pt-5">
       <div className="flex items-end justify-between gap-4">
         <div>
           <p className="text-sm text-gray-500">
@@ -947,16 +902,16 @@ function dadosDespesasCategoria() {
         </div>
       </div>
 
-      <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden mt-3">
+      <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden mt-4">
         <div
-          className={`${corBarraMeta()} h-3 rounded-full transition-all`}
+          className={`${corBarraMeta()} h-4 rounded-full transition-all`}
           style={{
             width: `${progressoMeta()}%`
           }}
         />
       </div>
 
-      <p className="text-sm text-gray-500 mt-2">
+      <p className="text-sm text-gray-500 mt-3">
         Faltam{' '}
         <strong>
           {formatarMoeda(faltaParaMeta())}
@@ -967,7 +922,7 @@ function dadosDespesasCategoria() {
   </div>
 
   {/* COLUNA 3 — INTELIGÊNCIA E ALERTAS */}
-  <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
+  <div className="bg-white rounded-2xl p-6 shadow-sm">
     <div className="mb-5">
       <h2 className="text-xl font-bold text-gray-800">
         💡 Inteligência e alertas
@@ -1018,7 +973,7 @@ function dadosDespesasCategoria() {
         </span>
       </div>
 
-      <div className="bg-slate-800 text-white rounded-xl p-5 mt-4">
+      <div className="bg-gray-900 text-white rounded-xl p-5 mt-4">
   <p className="text-sm text-gray-300">
     💡 Visão rápida
   </p>
@@ -1050,9 +1005,9 @@ function dadosDespesasCategoria() {
 
 </div>
 
-<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
+<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
 
-  <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm h-full">
+  <div className="bg-white rounded-2xl p-6 shadow-sm">
     <p className="text-sm text-gray-500">
       Ticket médio do mês
     </p>
@@ -1062,7 +1017,7 @@ function dadosDespesasCategoria() {
     </p>
   </div>
 
-  <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm h-full">
+  <div className="bg-white rounded-2xl p-6 shadow-sm">
     <p className="text-sm text-gray-500">
       Clientes atendidos no mês
     </p>
@@ -1072,7 +1027,7 @@ function dadosDespesasCategoria() {
     </p>
   </div>
 
-  <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm h-full">
+  <div className="bg-white rounded-2xl p-6 shadow-sm">
     <p className="text-sm text-gray-500">
       Pedidos entregues no mês
     </p>
@@ -1082,7 +1037,7 @@ function dadosDespesasCategoria() {
     </p>
   </div>
 
-  <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm h-full">
+  <div className="bg-white rounded-2xl p-6 shadow-sm">
     <p className="text-sm text-gray-500">
       Momentos eternizados 💛
     </p>
@@ -1099,7 +1054,7 @@ function dadosDespesasCategoria() {
 </div>
 
 {/* PRIMEIRA LINHA */}
-<div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-10">
+<div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
 
   <GraficoEvolucaoFinanceira
     dados={dadosEvolucaoFinanceira()}
@@ -1112,7 +1067,7 @@ function dadosDespesasCategoria() {
 </div>
 
 {/* SEGUNDA LINHA */}
-<div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-10">
+<div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
 
   <GraficoProdutosVendidos
     dados={produtosMaisVendidos()}
@@ -1126,7 +1081,7 @@ function dadosDespesasCategoria() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
 
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -1175,7 +1130,7 @@ function dadosDespesasCategoria() {
 
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
 
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -1218,7 +1173,7 @@ function dadosDespesasCategoria() {
 
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full">
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
 
             <div className="flex items-center justify-between mb-5">
               <div>

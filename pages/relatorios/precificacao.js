@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
 import { supabase } from '../../lib/supabase'
+import { obterTotalCustosOperacionais } from '../../lib/custosOperacionais'
 
 export default function RelatorioPrecificacao() {
   const [configuracao, setConfiguracao] = useState(null)
   const [produtos, setProdutos] = useState([])
+  const [totalCustosOperacionais, setTotalCustosOperacionais] = useState(0)
 
   async function carregarConfiguracao() {
     const { data, error } = await supabase
@@ -19,6 +21,16 @@ export default function RelatorioPrecificacao() {
     }
 
     setConfiguracao(data)
+  }
+
+  async function carregarCustosOperacionais() {
+    try {
+      const total = await obterTotalCustosOperacionais()
+      setTotalCustosOperacionais(Number(total || 0))
+    } catch (error) {
+      console.log('Erro ao carregar custos operacionais:', error)
+      setTotalCustosOperacionais(0)
+    }
   }
 
   async function carregarProdutos() {
@@ -47,6 +59,7 @@ export default function RelatorioPrecificacao() {
 
   useEffect(() => {
     carregarConfiguracao()
+    carregarCustosOperacionais()
     carregarProdutos()
   }, [])
 
@@ -63,16 +76,8 @@ export default function RelatorioPrecificacao() {
     })
   }
 
-  function custosFixosTotais() {
-    if (!configuracao) return 0
-
-    return (
-      Number(configuracao.energia || 0) +
-      Number(configuracao.internet || 0) +
-      Number(configuracao.canva || 0) +
-      Number(configuracao.dominio || 0) +
-      Number(configuracao.outros_custos || 0)
-    )
+  function custosOperacionaisTotais() {
+    return Number(totalCustosOperacionais || 0)
   }
 
   function horasMensais() {
@@ -93,12 +98,12 @@ export default function RelatorioPrecificacao() {
     return Number(configuracao?.pro_labore_desejado || 0) / horas
   }
 
-  function custoFixoPorHora() {
+  function custoOperacionalPorHora() {
     const horas = horasMensais()
 
     if (horas <= 0) return 0
 
-    return custosFixosTotais() / horas
+    return custosOperacionaisTotais() / horas
   }
 
   function custoInsumos(produto) {
@@ -120,15 +125,15 @@ export default function RelatorioPrecificacao() {
     return horasProduto(produto) * valorHora()
   }
 
-  function custoFixoProduto(produto) {
-    return horasProduto(produto) * custoFixoPorHora()
+  function custoOperacionalProduto(produto) {
+    return horasProduto(produto) * custoOperacionalPorHora()
   }
 
   function custoTotal(produto) {
     return (
       custoInsumos(produto) +
       custoMaoDeObra(produto) +
-      custoFixoProduto(produto)
+      custoOperacionalProduto(produto)
     )
   }
 
@@ -149,55 +154,55 @@ export default function RelatorioPrecificacao() {
   }
 
   function statusMargem(produto) {
-  const margem = Number(margemReal(produto).toFixed(2))
-  const margemDesejada = Number(
-    produto.margem_lucro ||
-    configuracao?.margem_padrao ||
-    0
-  )
+    const margem = Number(margemReal(produto).toFixed(2))
+    const margemDesejada = Number(
+      produto.margem_lucro ||
+      configuracao?.margem_padrao ||
+      0
+    )
 
-  if (margem >= margemDesejada) return 'Saudável'
-  if (margem >= margemDesejada * 0.75) return 'Reduzida'
-  return 'Crítica'
-}
+    if (margem >= margemDesejada) return 'Saudável'
+    if (margem >= margemDesejada * 0.75) return 'Reduzida'
+    return 'Crítica'
+  }
 
   function corStatus(status) {
-  if (status === 'Saudável') return 'bg-green-100 text-green-700'
-  if (status === 'Reduzida') return 'bg-yellow-100 text-yellow-700'
-  return 'bg-red-100 text-red-700'
-}
+    if (status === 'Saudável') return 'bg-green-100 text-green-700'
+    if (status === 'Reduzida') return 'bg-yellow-100 text-yellow-700'
+    return 'bg-red-100 text-red-700'
+  }
 
-function totalProdutos() {
-  return produtos.length
-}
+  function totalProdutos() {
+    return produtos.length
+  }
 
-function lucroMedio() {
-  if (produtos.length === 0) return 0
+  function lucroMedio() {
+    if (produtos.length === 0) return 0
 
-  const total = produtos.reduce(
-    (soma, produto) => soma + lucroEstimado(produto),
-    0
-  )
+    const total = produtos.reduce(
+      (soma, produto) => soma + lucroEstimado(produto),
+      0
+    )
 
-  return total / produtos.length
-}
+    return total / produtos.length
+  }
 
-function margemMedia() {
-  if (produtos.length === 0) return 0
+  function margemMedia() {
+    if (produtos.length === 0) return 0
 
-  const total = produtos.reduce(
-    (soma, produto) => soma + margemReal(produto),
-    0
-  )
+    const total = produtos.reduce(
+      (soma, produto) => soma + margemReal(produto),
+      0
+    )
 
-  return total / produtos.length
-}
+    return total / produtos.length
+  }
 
-function produtosEmAtencao() {
-  return produtos.filter(
-    produto => statusMargem(produto) !== 'Saudável'
-  ).length
-}
+  function produtosEmAtencao() {
+    return produtos.filter(
+      produto => statusMargem(produto) !== 'Saudável'
+    ).length
+  }
 
   if (!configuracao) {
     return (
@@ -220,58 +225,58 @@ function produtosEmAtencao() {
       <main className="flex-1 p-8">
 
         <div className="mb-8">
-  <h1 className="text-3xl font-bold text-gray-800">
-    Relatório de Precificação
-  </h1>
+          <h1 className="text-3xl font-bold text-gray-800">
+            Relatório de Precificação
+          </h1>
 
-  <p className="text-gray-500">
-    Consulte custos, preços, lucros e margens reais dos produtos.
-  </p>
-</div>
+          <p className="text-gray-500">
+            Consulte custos, preços, lucros e margens reais dos produtos.
+          </p>
+        </div>
 
-<div className="grid grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-4 gap-6 mb-8">
 
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
-    <p className="text-gray-500">
-      Produtos Precificados
-    </p>
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Produtos Precificados
+            </p>
 
-    <h2 className="text-3xl font-bold text-gray-800 mt-2">
-      {totalProdutos()}
-    </h2>
-  </div>
+            <h2 className="text-3xl font-bold text-gray-800 mt-2">
+              {totalProdutos()}
+            </h2>
+          </div>
 
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
-    <p className="text-gray-500">
-      Lucro Médio
-    </p>
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Lucro Médio
+            </p>
 
-    <h2 className="text-3xl font-bold text-green-700 mt-2">
-      {formatarMoeda(lucroMedio())}
-    </h2>
-  </div>
+            <h2 className="text-3xl font-bold text-green-700 mt-2">
+              {formatarMoeda(lucroMedio())}
+            </h2>
+          </div>
 
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
-    <p className="text-gray-500">
-      Margem Média
-    </p>
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Margem Média
+            </p>
 
-    <h2 className="text-3xl font-bold text-blue-700 mt-2">
-      {formatarNumero(margemMedia())}%
-    </h2>
-  </div>
+            <h2 className="text-3xl font-bold text-blue-700 mt-2">
+              {formatarNumero(margemMedia())}%
+            </h2>
+          </div>
 
-  <div className="bg-white rounded-2xl p-6 shadow-sm">
-    <p className="text-gray-500">
-      Produtos em Atenção
-    </p>
+          <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <p className="text-gray-500">
+              Produtos em Atenção
+            </p>
 
-    <h2 className="text-3xl font-bold text-yellow-600 mt-2">
-      {produtosEmAtencao()}
-    </h2>
-  </div>
+            <h2 className="text-3xl font-bold text-yellow-600 mt-2">
+              {produtosEmAtencao()}
+            </h2>
+          </div>
 
-</div>
+        </div>
 
         <div className="bg-white rounded-2xl shadow-sm overflow-x-auto">
           <table className="w-full min-w-[1200px]">
@@ -281,7 +286,7 @@ function produtosEmAtencao() {
                 <th className="text-left p-4 text-gray-600">Produto</th>
                 <th className="text-left p-4 text-gray-600">Insumos</th>
                 <th className="text-left p-4 text-gray-600">Mão de Obra</th>
-                <th className="text-left p-4 text-gray-600">Custo Fixo</th>
+                <th className="text-left p-4 text-gray-600">Custo Operacional</th>
                 <th className="text-left p-4 text-gray-600">Custo Total</th>
                 <th className="text-left p-4 text-gray-600">Preço Atual</th>
                 <th className="text-left p-4 text-gray-600">Lucro</th>
@@ -320,7 +325,7 @@ function produtosEmAtencao() {
                     </td>
 
                     <td className="p-4">
-                      {formatarMoeda(custoFixoProduto(produto))}
+                      {formatarMoeda(custoOperacionalProduto(produto))}
                     </td>
 
                     <td className="p-4 font-semibold">

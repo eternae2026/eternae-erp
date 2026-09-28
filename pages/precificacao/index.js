@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
 import PrecificacaoDrawer from '../../components/PrecificacaoDrawer'
 import { supabase } from '../../lib/supabase'
+import { obterTotalCustosOperacionais } from '../../lib/custosOperacionais'
 
 export default function Precificacao() {
   const [configuracao, setConfiguracao] = useState(null)
+  const [totalCustosOperacionais, setTotalCustosOperacionais] = useState(0)
   const [produtos, setProdutos] = useState([])
   const [produtoSelecionadoId, setProdutoSelecionadoId] = useState('')
   const [produtoSelecionado, setProdutoSelecionado] = useState(null)
@@ -29,6 +31,16 @@ export default function Precificacao() {
     }
 
     setConfiguracao(data)
+  }
+
+  async function carregarCustosOperacionais() {
+    try {
+      const total = await obterTotalCustosOperacionais()
+      setTotalCustosOperacionais(total)
+    } catch (error) {
+      console.log('Erro ao carregar custos operacionais:', error)
+      setTotalCustosOperacionais(0)
+    }
   }
 
   async function carregarProdutos() {
@@ -77,6 +89,7 @@ export default function Precificacao() {
 
     await Promise.all([
       carregarConfiguracao(),
+      carregarCustosOperacionais(),
       carregarProdutos()
     ])
 
@@ -580,6 +593,7 @@ export default function Precificacao() {
   onClose={fecharDrawer}
   produto={produtoSelecionado}
   configuracao={configuracao}
+  totalCustosOperacionais={totalCustosOperacionais}
   composicao={composicao}
   precoFinal={precoFinal}
   setPrecoFinal={setPrecoFinal}
