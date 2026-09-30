@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { supabase } from '../lib/supabase'
+import { calcularPreviaPrecificacaoV2 } from '../lib/previaPrecificacaoV2'
+import {
+  obterCustoAtualProduto,
+  obterUltimaPrecificacaoV2,
+  confirmarPrecificacaoV2
+} from '../lib/precificacaoV2'
 
 
 
@@ -15,6 +21,8 @@ export default function PrecificacaoDrawer({
   configuracao,
 
   composicao = [],
+  composicaoPronta = false,
+  erroComposicao = '',
 
   precoFinal,
 
@@ -33,12 +41,18 @@ export default function PrecificacaoDrawer({
 
 
   const [salvando, setSalvando] = useState(false)
+  const operacaoPendente = useRef(null)
 
   const [modoEdicao, setModoEdicao] = useState(false)
+  const [edicaoInicializadaPara, setEdicaoInicializadaPara] = useState('')
+  const [carregandoEdicao, setCarregandoEdicao] = useState(false)
+  const [erroEdicao, setErroEdicao] = useState('')
+  const requisicaoEdicao = useRef(0)
 
   const [tempoEdicao, setTempoEdicao] = useState('')
 
   const [margemEdicao, setMargemEdicao] = useState('')
+  const [semEmbalagemEdicao, setSemEmbalagemEdicao] = useState(false)
 
   const [insumosEdicao, setInsumosEdicao] = useState([])
 
@@ -64,9 +78,12 @@ export default function PrecificacaoDrawer({
 
 ] = useState('')
 
-
+  const [calculoAtual, setCalculoAtual] = useState(null)
+  const [estadoCalculo, setEstadoCalculo] = useState('idle')
+  const [ultimaPrecificacao, setUltimaPrecificacao] = useState(null)
 
     useEffect(() => {
+    let ativo = true
 
     async function carregarEstoque() {
 
@@ -124,10 +141,38 @@ export default function PrecificacaoDrawer({
 
 carregarConfiguracoesSistema()
 
+    if (produto?.id && !modoNovoCadastro) {
+      setCalculoAtual(null)
+      setEstadoCalculo('loading')
+      Promise.all([
+        obterCustoAtualProduto(produto.id),
+        obterUltimaPrecificacaoV2(produto.id)
+      ]).then(([calculo, ultima]) => {
+        if (!ativo) return
+        setCalculoAtual(calculo)
+        setEstadoCalculo(calculo ? 'ready' : 'error')
+        setUltimaPrecificacao(ultima)
+      }).catch(error => {
+        if (!ativo) return
+        console.log('Precificação V2 ainda não disponível:', error)
+        setCalculoAtual(null)
+        setEstadoCalculo('error')
+        setUltimaPrecificacao(null)
+      })
+    } else {
+      setCalculoAtual(null)
+      setEstadoCalculo('idle')
+      setUltimaPrecificacao(null)
+    }
+
 
 
     if (modoNovoCadastro) {
 
+      requisicaoEdicao.current += 1
+      setEdicaoInicializadaPara('')
+      setCarregandoEdicao(false)
+      setErroEdicao('')
       setProdutoNovoSelecionado('')
 
       setTempoEdicao('')
@@ -137,6 +182,7 @@ carregarConfiguracoesSistema()
         configuracao?.margem_padrao || ''
 
       )
+      setSemEmbalagemEdicao(false)
 
       setPrecoFinal('')
 
@@ -148,13 +194,18 @@ carregarConfiguracoesSistema()
 
       setModoEdicao(false)
 
-      return
+      return () => { ativo = false }
 
     }
 
 
 
-    if (!produto) return
+    if (!produto) return () => { ativo = false }
+
+    requisicaoEdicao.current += 1
+    setEdicaoInicializadaPara('')
+    setCarregandoEdicao(false)
+    setErroEdicao('')
 
 
 
@@ -176,6 +227,8 @@ carregarConfiguracoesSistema()
 
     )
 
+    setSemEmbalagemEdicao(Boolean(produto.sem_embalagem_avulsa))
+
 
 
     setPrecoFinal(
@@ -190,17 +243,7 @@ carregarConfiguracoesSistema()
 
 
 
-    setInsumosEdicao(
-
-      composicao.map(item => ({
-
-        ...item,
-
-        quantidade: item.quantidade
-
-      }))
-
-    )
+    setInsumosEdicao([])
 
 
 
@@ -210,6 +253,7 @@ carregarConfiguracoesSistema()
 
     setModoEdicao(false)
 
+    return () => { ativo = false }
   }, [
 
     produto?.id,
@@ -242,6 +286,32 @@ carregarConfiguracoesSistema()
 
     : produto
 
+  const produtoEdicaoId = modoNovoCadastro ? produtoNovoSelecionado : produto?.id
+  const calculoProntoParaProduto = Boolean(
+    estadoCalculo === 'ready' &&
+    produtoEdicaoId && calculoAtual &&
+    String(calculoAtual.produto_id) === String(produtoEdicaoId)
+  )
+
+  function fichaConfereComCalculo(itens, calculo = calculoAtual, produtoId = produtoEdicaoId) {
+    if (!calculo || String(calculo.produto_id) !== String(produtoId) ||
+        !Array.isArray(calculo.ficha_componentes)) return false
+    const referencia = calculo.ficha_componentes
+    const chave = (id, quantidade) => `${String(id)}:${Number(quantidade)}`
+    const carregados = itens.map(item =>
+      chave(item.insumo_id || item.estoque_id || item.estoque?.id, item.quantidade)
+    ).sort()
+    const oficiais = referencia.map(item =>
+      chave(item.estoque_id, item.quantidade)
+    ).sort()
+    return carregados.length === oficiais.length &&
+      carregados.every((item, indice) => item === oficiais[indice])
+  }
+
+  const consultaProntaParaEdicao = !modoNovoCadastro &&
+    composicaoPronta && calculoProntoParaProduto &&
+    fichaConfereComCalculo(composicao)
+
 
 
   if (
@@ -262,6 +332,8 @@ carregarConfiguracoesSistema()
 
   function formatarMoeda(valor) {
 
+    if (valor === null || valor === undefined || !Number.isFinite(Number(valor))) return '—'
+
     return Number(valor || 0).toLocaleString('pt-BR', {
 
       style: 'currency',
@@ -276,6 +348,8 @@ carregarConfiguracoesSistema()
 
   function formatarNumero(valor) {
 
+    if (valor === null || valor === undefined || !Number.isFinite(Number(valor))) return '—'
+
     return Number(valor || 0).toLocaleString('pt-BR', {
 
       maximumFractionDigits: 2
@@ -286,684 +360,233 @@ carregarConfiguracoesSistema()
 
 
 
-  function custosOperacionaisTotais() {
-    return Number(totalCustosOperacionais || 0)
-  }
-
-  function horasMensais() {
-
-    return (
-
-      Number(configuracao.horas_por_dia || 0) *
-
-      Number(configuracao.dias_por_semana || 0) *
-
-      4.33
-
-    )
-
-  }
-
-
-
-  function valorHora() {
-
-    const horas = horasMensais()
-
-
-
-    if (horas <= 0) {
-
-      return 0
-
+  // O custo vigente vem da RPC V2; a prévia usa suas taxas por hora.
+  // A confirmação continua sendo recalculada no banco.
+  function economiaExibida() {
+    if (!calculoProntoParaProduto ||
+        ((modoEdicao || modoNovoCadastro) &&
+         (carregandoEdicao || edicaoInicializadaPara !== String(produtoEdicaoId)))) return null
+    if (!modoEdicao && !modoNovoCadastro) return {
+      ficha: Number(calculoAtual.custo_ficha_tecnica),
+      maoObra: Number(calculoAtual.custo_mao_obra),
+      operacional: Number(calculoAtual.custo_operacional),
+      producao: Number(calculoAtual.custo_producao),
+      embalagem: Number(calculoAtual.custo_embalagem_avulsa),
+      venda: Number(calculoAtual.custo_venda_avulsa)
     }
-
-
-
-    return Number(configuracao.pro_labore_desejado || 0) / horas
-
+    return calcularPreviaPrecificacaoV2(
+      calculoAtual, insumosEdicao, estoque, tempoEdicao, semEmbalagemEdicao
+    )
   }
 
-
-
+  function categoriaDoItem(item) { return item.estoque?.categoria_item || 'producao' }
+  function custoInsumos() { return economiaExibida()?.ficha ?? null }
+  function custoMaoDeObra() { return economiaExibida()?.maoObra ?? null }
+  function custoOperacionalProduto() { return economiaExibida()?.operacional ?? null }
+  function custoProducao() { return economiaExibida()?.producao ?? null }
+  function custoEmbalagemPadrao() { return economiaExibida()?.embalagem ?? null }
+  function custoTotalProduto() { return economiaExibida()?.venda ?? null }
+  function valorHora() { return calculoAtual ? Number(calculoAtual.valor_hora) : null }
   function custoOperacionalPorHora() {
-
-    const horas = horasMensais()
-
-
-
-    if (horas <= 0) {
-
-      return 0
-
-    }
-
-
-
-    return custosOperacionaisTotais() / horas
-
+    return calculoAtual ? Number(calculoAtual.custo_operacional_por_hora) : null
   }
-
-
-
-  function custoInsumos() {
-
-  const itens = modoEdicao
-
-    ? insumosEdicao
-
-    : composicao
-
-
-
-  return itens.reduce((total, item) => {
-
-    const custoUnitario = Number(
-
-      item.estoque?.custo_unitario || 0
-
-    )
-
-
-
-    const quantidade = Number(
-
-      item.quantidade || 0
-
-    )
-
-
-
-    return total + custoUnitario * quantidade
-
-  }, 0)
-
-}
-
-
-
-function itensFichaTecnica() {
-
-  return modoEdicao
-
-    ? insumosEdicao
-
-    : composicao
-
-}
-
-
-
-function categoriaDoItem(item) {
-
-  return (
-
-    item.estoque?.categoria_item ||
-
-    'producao'
-
-  )
-
-}
-
-
-
-function custoPorCategoria(categoria) {
-
-  return itensFichaTecnica()
-
-    .filter(
-
-      item =>
-
-        categoriaDoItem(item) === categoria
-
-    )
-
-    .reduce((total, item) => {
-
-      const custoUnitario = Number(
-
-        item.estoque?.custo_unitario || 0
-
-      )
-
-
-
-      const quantidade = Number(
-
-        item.quantidade || 0
-
-      )
-
-
-
-      return (
-
-        total +
-
-        custoUnitario * quantidade
-
-      )
-
-    }, 0)
-
-}
-
-
-
-function custoProducao() {
-
-  return custoPorCategoria('producao')
-
-}
-
-
-
-function custoEmbalagens() {
-
-  return custoPorCategoria('embalagem')
-
-}
-
-
-
-function custoAcessorios() {
-
-  return custoPorCategoria('acessorio')
-
-}
-
-
-
-function custoEmbalagemPadrao() {
-
-  return Number(
-
-    configuracaoSistema
-
-      ?.embalagem_padrao || 0
-
-  )
-
-}
-
-
-
-  function horasProduto() {
-
-  const tempoUtilizado =
-
-    modoEdicao || modoNovoCadastro
-
-      ? tempoEdicao
-
-      : produto?.tempo_producao
-
-
-
-  return Number(tempoUtilizado || 0) / 60
-
-}
-
-
-
-  function custoMaoDeObra() {
-
-    return horasProduto() * valorHora()
-
-  }
-
-
-
-  function custoOperacionalProduto() {
-
-    return horasProduto() * custoOperacionalPorHora()
-
-  }
-
-
-
-  function custoTotalProduto() {
-
-  return (
-
-    custoInsumos() +
-
-    custoEmbalagemPadrao() +
-
-    custoMaoDeObra() +
-
-    custoOperacionalProduto()
-
-  )
-
-}
-
-
-
   function margemProduto() {
-
-  if (modoEdicao || modoNovoCadastro) {
-
-    return Number(
-
-      margemEdicao ||
-
-      configuracao?.margem_padrao ||
-
-      0
-
-    )
-
+    return modoEdicao || modoNovoCadastro
+      ? Number(margemEdicao || 0)
+      : Number(calculoAtual?.margem_desejada || 0)
   }
-
-
-
-  return Number(
-
-    produto?.margem_lucro ||
-
-    configuracao?.margem_padrao ||
-
-    0
-
-  )
-
-}
-
-
-
   function precoSugerido() {
-
-    const margem = margemProduto() / 100
-
-
-
-    if (margem >= 1) {
-
-      return 0
-
-    }
-
-
-
-    return custoTotalProduto() / (1 - margem)
-
+    if (!calculoProntoParaProduto) return null
+    if (!modoEdicao && !modoNovoCadastro) return Number(calculoAtual.preco_base_sugerido)
+    const divisor = 1 - margemProduto() / 100
+    return divisor > 0 ? custoTotalProduto() / divisor : null
   }
-
-
-
-  function taxaCartao() {
-
-    return Number(configuracao.taxa_cartao || 0) / 100
-
-  }
-
-
-
   function precoCartao() {
-
-    const taxa = taxaCartao()
-
-    const precoPix = precoSugerido()
-
-
-
-    if (taxa >= 1) {
-
-      return 0
-
-    }
-
-
-
-    return precoPix / (1 - taxa)
-
+    if (!calculoProntoParaProduto) return null
+    if (!modoEdicao && !modoNovoCadastro) return Number(calculoAtual.preco_oficial_sugerido)
+    const divisor = 1 - Number(calculoAtual.taxa_cartao) / 100
+    return divisor > 0 ? precoSugerido() / divisor : null
   }
-
-
-
-  function descontoPixPercentual() {
-
-    const cartao = precoCartao()
-
-    const pix = precoSugerido()
-
-
-
-    if (cartao <= 0) {
-
-      return 0
-
-    }
-
-
-
-    return ((cartao - pix) / cartao) * 100
-
-  }
-
-
-
-  function lucroSugerido() {
-
-    return precoSugerido() - custoTotalProduto()
-
-  }
-
-
-
   function margemReal(valorVenda) {
+    const venda = Number(valorVenda)
+    return venda > 0 && custoTotalProduto() !== null
+      ? ((venda - custoTotalProduto()) / venda) * 100 : null
+  }
+  function lucroNoPrecoFinal() {
+    return custoTotalProduto() === null ? null : Number(precoFinal || 0) - custoTotalProduto()
+  }
 
-    const venda = Number(valorVenda || 0)
+  function iniciarEdicao() {
+    if (!consultaProntaParaEdicao) return
+    setInsumosEdicao(composicao.map(item => ({ ...item, quantidade: item.quantidade })))
+    setEdicaoInicializadaPara(String(produto.id))
+    setErroEdicao('')
+    setModoEdicao(true)
+  }
+
+  async function selecionarProdutoParaNovaPrecificacao(id) {
+    const token = ++requisicaoEdicao.current
+    const selecionado = produtos.find(item => String(item.id) === String(id))
+    setProdutoNovoSelecionado(id)
+    setModoEdicao(false)
+    setEdicaoInicializadaPara('')
+    setCalculoAtual(null)
+    setEstadoCalculo(selecionado ? 'loading' : 'idle')
+    setInsumosEdicao([])
+    setErroEdicao('')
+    setCarregandoEdicao(Boolean(selecionado))
+    if (!selecionado) return
+
+    setTempoEdicao(selecionado.tempo_producao || '')
+    setMargemEdicao(selecionado.margem_lucro || configuracao?.margem_padrao || '')
+    setSemEmbalagemEdicao(Boolean(selecionado.sem_embalagem_avulsa))
+    setPrecoFinal(selecionado.preco_final || selecionado.preco || '')
+    setNovoInsumo('')
+    setNovaQuantidade(1)
+
+    try {
+      const [{ data, error }, calculo] = await Promise.all([
+        supabase
+          .from('produto_composicao')
+          .select('*, estoque (id, nome, custo_unitario, categoria_item)')
+          .eq('produto_id', id),
+        obterCustoAtualProduto(id)
+      ])
+      if (token !== requisicaoEdicao.current) return
+      if (error) throw error
+      if (!fichaConfereComCalculo(data || [], calculo, id)) {
+        throw new Error('A Ficha Técnica carregada não coincide com o custo atual.')
+      }
+      setCalculoAtual(calculo)
+      setEstadoCalculo('ready')
+      setInsumosEdicao((data || []).map(item => ({ ...item, quantidade: item.quantidade })))
+      setEdicaoInicializadaPara(String(id))
+      setModoEdicao(true)
+    } catch (error) {
+      if (token !== requisicaoEdicao.current) return
+      console.error('Erro ao carregar Ficha Técnica para edição:', error)
+      setEstadoCalculo('error')
+      setErroEdicao('Não foi possível carregar a Ficha Técnica. Selecione o produto novamente antes de editar.')
+    } finally {
+      if (token === requisicaoEdicao.current) setCarregandoEdicao(false)
+    }
+  }
 
 
 
-    if (venda <= 0) {
+  async function salvarAlteracoes() {
+    if (salvando) return
 
-      return 0
-
+    const produtoId = modoNovoCadastro ? produtoNovoSelecionado : produto?.id
+    if (!modoEdicao || carregandoEdicao ||
+        edicaoInicializadaPara !== String(produtoId) ||
+        (!modoNovoCadastro && !composicaoPronta) ||
+        !calculoProntoParaProduto) {
+      alert('A Ficha Técnica e o custo atual precisam terminar de carregar antes de confirmar.')
+      return
+    }
+    if (semEmbalagemEdicao && calculoAtual.embalagem_configurada) {
+      alert('O produto possui uma embalagem associada. Remova essa associação explicitamente em Embalagens antes de confirmar como sem embalagem.')
+      return
+    }
+    if (!semEmbalagemEdicao && !calculoAtual.embalagem_configurada) {
+      alert('Configure uma embalagem avulsa ou informe que este produto é deliberadamente vendido sem embalagem.')
+      return
     }
 
-
-
-    return (
-
-      ((venda - custoTotalProduto()) / venda) *
-
-      100
-
-    )
-
-  }
-
-
-
-  function lucroNoPrecoFinal() {
-
-    return (
-
-      Number(precoFinal || 0) -
-
-      custoTotalProduto()
-
-    )
-
-  }
-
-
-
-    async function salvarAlteracoes() {
-
-    const produtoId = modoNovoCadastro
-
-      ? produtoNovoSelecionado
-
-      : produto?.id
-
-
+    const tempo = Number(tempoEdicao)
+    const margem = Number(margemEdicao)
+    const valorFinal = Number(precoFinal)
 
     if (!produtoId) {
-
       alert('Selecione um produto.')
-
       return
-
     }
-
-
-
-    const tempo = Number(tempoEdicao || 0)
-
-    const margem = Number(margemEdicao || 0)
-
-    const valorFinal = Number(precoFinal || 0)
-
-
-
-    if (tempo <= 0) {
-
+    if (!Number.isFinite(tempo) || tempo <= 0) {
       alert('Informe um tempo de produção maior que zero.')
-
       return
-
     }
-
-
-
-    if (margem < 0 || margem >= 100) {
-
+    if (!Number.isFinite(margem) || margem < 0 || margem >= 100) {
       alert('A margem deve ser maior ou igual a zero e menor que 100%.')
-
       return
-
     }
-
-
-
-    if (insumosEdicao.length === 0) {
-
-      alert('Adicione pelo menos um insumo à ficha técnica.')
-
-      return
-
-    }
-
-
-
-    if (valorFinal <= 0) {
-
+    if (!Number.isFinite(valorFinal) || valorFinal <= 0) {
       alert('Informe um preço final maior que zero.')
-
       return
-
     }
 
-
-
-    const insumosInvalidos = insumosEdicao.some(
-
-      item =>
-
-        !(
-
-          item.insumo_id ||
-
-          item.estoque_id ||
-
-          item.estoque?.id
-
-        ) ||
-
-        Number(item.quantidade || 0) <= 0
-
-    )
-
-
-
-    if (insumosInvalidos) {
-
-      alert(
-
-        'Confira os insumos e informe quantidades maiores que zero.'
-
-      )
-
+    const componentes = insumosEdicao.map(item => ({
+      estoque_id: item.insumo_id || item.estoque_id || item.estoque?.id,
+      quantidade: Number(item.quantidade)
+    }))
+    if (!componentes.length || componentes.some(item =>
+      !item.estoque_id || !Number.isFinite(item.quantidade) ||
+      item.quantidade <= 0
+    )) {
+      alert('Confira os itens e as quantidades da Ficha Técnica.')
       return
-
     }
 
-
+    const assinatura = JSON.stringify({
+      produtoId,
+      precoFinal: valorFinal,
+      margemDesejada: margem,
+      tempoProducao: tempo,
+      componentes,
+      semEmbalagemAvulsa: semEmbalagemEdicao
+    })
+    if (!operacaoPendente.current ||
+        operacaoPendente.current.assinatura !== assinatura) {
+      operacaoPendente.current = {
+        assinatura,
+        chave: globalThis.crypto.randomUUID()
+      }
+    }
 
     setSalvando(true)
-
-
-
-    const { data, error } = await supabase
-
-      .from('produtos')
-
-      .update({
-
-        tempo_producao: tempo,
-
-        margem_lucro: margem,
-
-        preco_final: valorFinal,
-
-        preco: valorFinal
-
+    let confirmada = false
+    try {
+      await confirmarPrecificacaoV2({
+        operacaoId: operacaoPendente.current.chave,
+        produtoId,
+        precoFinal: valorFinal,
+        margemDesejada: margem,
+        tempoProducao: tempo,
+        componentes,
+        semEmbalagemAvulsa: semEmbalagemEdicao
       })
+      confirmada = true
+      operacaoPendente.current = null
 
-      .eq('id', produtoId)
+      const { data, error } = await supabase
+        .from('produtos')
+        .select('*')
+        .eq('id', produtoId)
+        .single()
+      if (error) throw error
+      onPrecoSalvo?.(data)
 
-      .select()
-
-      .single()
-
-
-
-    if (error) {
-
+      const [calculo, ultima] = await Promise.all([
+        obterCustoAtualProduto(produtoId),
+        obterUltimaPrecificacaoV2(produtoId)
+      ])
+      setCalculoAtual(calculo)
+      setUltimaPrecificacao(ultima)
+      setModoEdicao(false)
+      alert('Precificação confirmada e registrada no histórico.')
+      if (modoNovoCadastro) onClose()
+    } catch (error) {
+      console.log('Falha ao confirmar ou atualizar a tela de precificação:', error)
+      if (confirmada) {
+        setModoEdicao(false)
+        alert('Precificação confirmada. Atualize a página para consultar os dados.')
+      } else {
+        alert(error?.message || 'Não foi possível confirmar. Tente novamente com a mesma operação.')
+      }
+    } finally {
       setSalvando(false)
-
-      console.log('Erro ao salvar precificação:', error)
-
-      alert('Não foi possível salvar a precificação.')
-
-      return
-
     }
-
-
-
-    const { error: erroExcluir } = await supabase
-
-      .from('produto_composicao')
-
-      .delete()
-
-      .eq('produto_id', produtoId)
-
-
-
-    if (erroExcluir) {
-
-      setSalvando(false)
-
-      console.log(
-
-        'Erro ao excluir composição:',
-
-        erroExcluir
-
-      )
-
-      alert(
-
-        'O produto foi atualizado, mas não foi possível atualizar a ficha técnica.'
-
-      )
-
-      return
-
-    }
-
-
-
-    const composicaoSalvar =
-
-      insumosEdicao.map(item => ({
-
-        produto_id: produtoId,
-
-        insumo_id:
-
-          item.insumo_id ||
-
-          item.estoque_id ||
-
-          item.estoque?.id,
-
-        quantidade: Number(
-
-          item.quantidade || 0
-
-        )
-
-      }))
-
-
-
-    const { error: erroInserir } = await supabase
-
-      .from('produto_composicao')
-
-      .insert(composicaoSalvar)
-
-
-
-    setSalvando(false)
-
-
-
-    if (erroInserir) {
-
-      console.log(
-
-        'Erro ao salvar composição:',
-
-        erroInserir
-
-      )
-
-
-
-      alert(
-
-        'O produto foi atualizado, mas houve erro ao salvar os insumos.'
-
-      )
-
-      return
-
-    }
-
-
-
-    if (onPrecoSalvo) {
-
-      onPrecoSalvo(data)
-
-    }
-
-
-
-    setModoEdicao(false)
-
-
-
-    alert(
-
-      modoNovoCadastro
-
-        ? 'Precificação criada com sucesso!'
-
-        : 'Precificação atualizada com sucesso!'
-
-    )
-
-
-
-    if (modoNovoCadastro) {
-
-      onClose()
-
-    }
-
   }
-
 
 
   function adicionarInsumo() {
@@ -1050,6 +673,12 @@ function custoEmbalagemPadrao() {
 
     if (modoNovoCadastro) {
 
+      requisicaoEdicao.current += 1
+      setCarregandoEdicao(false)
+      setEdicaoInicializadaPara('')
+      setErroEdicao('')
+      setCalculoAtual(null)
+      setEstadoCalculo('idle')
       setProdutoNovoSelecionado('')
 
       setTempoEdicao('')
@@ -1300,7 +929,7 @@ function custoEmbalagemPadrao() {
 
                     onClick={salvarAlteracoes}
 
-                    disabled={salvando}
+                    disabled={salvando || carregandoEdicao || edicaoInicializadaPara !== String(produtoEdicaoId) || !calculoProntoParaProduto}
 
                     className="
 
@@ -1412,13 +1041,13 @@ function custoEmbalagemPadrao() {
 
 
 
-                <button
+                  <button
 
-                  type="button"
+                    type="button"
 
-                  onClick={salvarAlteracoes}
+                    onClick={salvarAlteracoes}
 
-                  disabled={salvando}
+                    disabled={salvando || carregandoEdicao || edicaoInicializadaPara !== String(produtoEdicaoId) || !consultaProntaParaEdicao}
 
                   className="
 
@@ -1464,7 +1093,8 @@ function custoEmbalagemPadrao() {
 
                   type="button"
 
-                  onClick={() => setModoEdicao(true)}
+                  onClick={iniciarEdicao}
+                  disabled={!consultaProntaParaEdicao}
 
                   className="
 
@@ -1483,12 +1113,16 @@ function custoEmbalagemPadrao() {
                     font-medium
 
                     transition
+                    disabled:opacity-60
+                    disabled:cursor-not-allowed
 
                   "
 
                 >
 
-                  Editar precificação
+                  {erroComposicao || (composicaoPronta && calculoProntoParaProduto && !fichaConfereComCalculo(composicao))
+                    ? 'Ficha Técnica indisponível'
+                    : consultaProntaParaEdicao ? 'Editar precificação' : 'Carregando Ficha Técnica...'}
 
                 </button>
 
@@ -1542,99 +1176,25 @@ function custoEmbalagemPadrao() {
 
           <div className="p-5 md:p-6 space-y-6">
 
-
-
-            {/* Resumo principal */}
-
-            <section>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-
-
-
-                <div className="bg-green-50 border border-green-100 rounded-2xl p-5">
-
-                  <p className="text-sm font-medium text-green-700">
-
-                    Preço PIX sugerido
-
-                  </p>
-
-
-
-                  <p className="text-2xl font-bold text-green-800 mt-2">
-
-                    {formatarMoeda(precoSugerido())}
-
-                  </p>
-
-                </div>
+            {(carregandoEdicao || (!modoNovoCadastro && !composicaoPronta && !erroComposicao)) && (
+              <p role="status" className="rounded-xl bg-blue-50 p-4 text-sm text-blue-800">
+                Carregando Ficha Técnica. A edição ficará disponível quando os dados estiverem prontos.
+              </p>
+            )}
+            {(erroComposicao || erroEdicao) && (
+              <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+                {erroComposicao || erroEdicao}
+              </p>
+            )}
+            {!modoNovoCadastro && composicaoPronta && calculoProntoParaProduto &&
+              !fichaConfereComCalculo(composicao) && (
+                <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+                  A Ficha Técnica carregada não coincide com o custo atual. Atualize a página antes de editar.
+                </p>
+              )}
 
 
 
-                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
-
-                  <p className="text-sm font-medium text-blue-700">
-
-                    Preço no cartão
-
-                  </p>
-
-
-
-                  <p className="text-2xl font-bold text-blue-800 mt-2">
-
-                    {formatarMoeda(precoCartao())}
-
-                  </p>
-
-                </div>
-
-
-
-                <div className="bg-violet-50 border border-violet-100 rounded-2xl p-5">
-
-                  <p className="text-sm font-medium text-violet-700">
-
-                    Lucro sugerido
-
-                  </p>
-
-
-
-                  <p className="text-2xl font-bold text-violet-800 mt-2">
-
-                    {formatarMoeda(lucroSugerido())}
-
-                  </p>
-
-                </div>
-
-
-
-                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
-
-                  <p className="text-sm font-medium text-amber-700">
-
-                    Margem desejada
-
-                  </p>
-
-
-
-                  <p className="text-2xl font-bold text-amber-800 mt-2">
-
-                    {formatarNumero(margemProduto())}%
-
-                  </p>
-
-                </div>
-
-
-
-              </div>
-
-            </section>
 
 
 
@@ -1682,95 +1242,7 @@ function custoEmbalagemPadrao() {
 
                     value={produtoNovoSelecionado}
 
-                    onChange={event => {
-
-                      const id = event.target.value
-
-
-
-                      setProdutoNovoSelecionado(id)
-
-
-
-                      const selecionado = produtos.find(
-
-                        item =>
-
-                          String(item.id) ===
-
-                          String(id)
-
-                      )
-
-
-
-                      if (!selecionado) {
-
-                        setTempoEdicao('')
-
-                        setMargemEdicao(
-
-                          configuracao?.margem_padrao ||
-
-                          ''
-
-                        )
-
-                        setPrecoFinal('')
-
-                        setInsumosEdicao([])
-
-                        setModoEdicao(false)
-
-                        return
-
-                      }
-
-
-
-                      setTempoEdicao(
-
-                        selecionado.tempo_producao ||
-
-                        ''
-
-                      )
-
-
-
-                      setMargemEdicao(
-
-                        selecionado.margem_lucro ||
-
-                        configuracao?.margem_padrao ||
-
-                        ''
-
-                      )
-
-
-
-                      setPrecoFinal(
-
-                        selecionado.preco_final ||
-
-                        selecionado.preco ||
-
-                        ''
-
-                      )
-
-
-
-                      setInsumosEdicao([])
-
-                      setNovoInsumo('')
-
-                      setNovaQuantidade(1)
-
-                      setModoEdicao(true)
-
-                    }}
+                    onChange={event => selecionarProdutoParaNovaPrecificacao(event.target.value)}
 
                     className="
 
@@ -2056,7 +1528,16 @@ function custoEmbalagemPadrao() {
 
               </div>
 
-
+              {modoEdicao && (
+                <label className="mx-5 mb-5 flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={semEmbalagemEdicao}
+                    onChange={event => setSemEmbalagemEdicao(event.target.checked)}
+                  />
+                  Produto deliberadamente sem embalagem avulsa
+                </label>
+              )}
 
             </section>
 
@@ -2086,7 +1567,7 @@ function custoEmbalagemPadrao() {
 
                     <p className="text-sm text-gray-500 mt-1">
 
-                      Materiais utilizados para produzir e entregar uma unidade.
+                    Materiais efetivamente consumidos na fabricação. A embalagem avulsa é considerada separadamente.
 
                     </p>
 
@@ -2098,7 +1579,7 @@ function custoEmbalagemPadrao() {
 
                     <p className="text-xs text-gray-500">
 
-                      Total dos materiais
+                      Custo da Ficha Técnica
 
                     </p>
 
@@ -2436,7 +1917,7 @@ function custoEmbalagemPadrao() {
 
 
 
-                    {(modoEdicao
+                    {(modoEdicao || (!modoNovoCadastro && composicaoPronta)) && (modoEdicao
 
                       ? insumosEdicao
 
@@ -2668,7 +2149,15 @@ function custoEmbalagemPadrao() {
 
 
 
-                    {(modoEdicao
+                    {((!modoNovoCadastro && !composicaoPronta) || carregandoEdicao) && (
+                      <tr>
+                        <td colSpan="6" className="px-5 py-10 text-center text-gray-500">
+                          {erroComposicao || erroEdicao || 'Carregando Ficha Técnica...'}
+                        </td>
+                      </tr>
+                    )}
+
+                    {!carregandoEdicao && (modoEdicao || (!modoNovoCadastro && composicaoPronta)) && (modoEdicao
 
                       ? insumosEdicao
 
@@ -2696,7 +2185,7 @@ function custoEmbalagemPadrao() {
 
                           <p className="text-sm text-gray-500 mt-1">
 
-                            Adicione os materiais utilizados na produção, embalagem ou composição do produto.
+                            Adicione apenas os materiais efetivamente consumidos na fabricação.
 
                           </p>
 
@@ -2720,101 +2209,6 @@ function custoEmbalagemPadrao() {
 
 
 
-              <div className="border-t border-gray-100 p-5">
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-
-
-
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-
-                    <p className="text-sm font-medium text-blue-700">
-
-                      Produção
-
-                    </p>
-
-
-
-                    <p className="text-lg font-bold text-blue-800 mt-2">
-
-                      {formatarMoeda(custoProducao())}
-
-                    </p>
-
-                  </div>
-
-
-
-                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
-
-                    <p className="text-sm font-medium text-amber-700">
-
-                      Embalagens
-
-                    </p>
-
-
-
-                    <p className="text-lg font-bold text-amber-800 mt-2">
-
-  {formatarMoeda(
-
-    custoEmbalagens() +
-
-    custoEmbalagemPadrao()
-
-  )}
-
-</p>
-
-                  </div>
-
-
-
-                  <div className="bg-violet-50 border border-violet-100 rounded-xl p-4">
-
-                    <p className="text-sm font-medium text-violet-700">
-
-                      Acessórios
-
-                    </p>
-
-
-
-                    <p className="text-lg font-bold text-violet-800 mt-2">
-
-                      {formatarMoeda(custoAcessorios())}
-
-                    </p>
-
-                  </div>
-
-
-
-                  <div className="bg-gray-900 rounded-xl p-4">
-
-                    <p className="text-sm font-medium text-gray-300">
-
-                      Total dos materiais
-
-                    </p>
-
-
-
-                    <p className="text-lg font-bold text-white mt-2">
-
-                      {formatarMoeda(custoInsumos())}
-
-                    </p>
-
-                  </div>
-
-
-
-                </div>
-
-              </div>
 
 
 
@@ -2822,541 +2216,134 @@ function custoEmbalagemPadrao() {
 
 
 
-            {/* Composição dos custos */}
-
-            <section className="bg-white rounded-2xl border border-gray-200 shadow-sm">
-
-
-
-              <div className="px-5 py-4 border-b border-gray-100">
-
-                <h3 className="text-lg font-bold text-gray-800">
-
-                  Composição dos custos
-
-                </h3>
-
-
-
-                <p className="text-sm text-gray-500 mt-1">
-
-                  Custos diretos e indiretos aplicados ao produto?.
-
+            {/* A — produção: todos os valores são da fonte econômica V2 */}
+            <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+              <h3 className="text-lg font-bold text-gray-800">A. Custo de Produção</h3>
+              <p className="text-sm text-gray-500 mt-1">Ficha Técnica + Mão de Obra + Custos Operacionais.</p>
+              {estadoCalculo === 'loading' && <p role="status" className="text-gray-600 mt-3">Carregando custo atual...</p>}
+              {estadoCalculo === 'error' && <p role="alert" className="text-amber-700 mt-3">Custo atual indisponível. Não confirme até atualizar a página.</p>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-4">
+                {[
+                  ['Custo da Ficha Técnica', custoInsumos()],
+                  ['Mão de Obra', custoMaoDeObra()],
+                  ['Custos Operacionais', custoOperacionalProduto()],
+                  ['Custo de Produção', custoProducao()]
+                ].map(([rotulo, valor]) => (
+                  <div key={rotulo} className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-sm text-gray-600">{rotulo}</p>
+                    <p className="text-lg font-bold text-gray-800 mt-2">{formatarMoeda(valor)}</p>
+                  </div>
+                ))}
+              </div>
+              {calculoAtual && (
+                <p className="text-xs text-gray-500 mt-3">
+                  Custos Operacionais incluem a parcela estimada das sacolas: {formatarMoeda(calculoAtual.custo_sacolas_estimado)} ao mês
+                  ({formatarMoeda(calculoAtual.custo_operacional_por_hora)} por hora operacional total).
                 </p>
-
-              </div>
-
-
-
-              <div className="p-5">
-
-
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-
-
-
-                  <div className="bg-gray-50 rounded-xl p-4">
-
-                    <div className="bg-gray-50 rounded-xl p-4">
-
-  <p className="text-sm text-gray-500">
-
-    Embalagem padrão
-
-  </p>
-
-
-
-  <p className="text-lg font-bold text-gray-800 mt-2">
-
-    {formatarMoeda(
-
-      custoEmbalagemPadrao()
-
-    )}
-
-  </p>
-
-</div>
-
-
-
-                    <p className="text-sm text-gray-500">
-
-                      Materiais
-
-                    </p>
-
-
-
-                    <p className="text-lg font-bold text-gray-800 mt-2">
-
-                      {formatarMoeda(custoInsumos())}
-
-                    </p>
-
-                  </div>
-
-
-
-                  <div className="bg-gray-50 rounded-xl p-4">
-
-                    <p className="text-sm text-gray-500">
-
-                      Mão de obra
-
-                    </p>
-
-
-
-                    <p className="text-lg font-bold text-gray-800 mt-2">
-
-                      {formatarMoeda(custoMaoDeObra())}
-
-                    </p>
-
-
-
-                    <p className="text-xs text-gray-500 mt-1">
-
-                      Hora: {formatarMoeda(valorHora())}
-
-                    </p>
-
-                  </div>
-
-
-
-                  <div className="bg-gray-50 rounded-xl p-4">
-
-                    <p className="text-sm text-gray-500">
-
-                      Custos operacionais aplicados
-
-                    </p>
-
-
-
-                    <p className="text-lg font-bold text-gray-800 mt-2">
-
-                      {formatarMoeda(custoOperacionalProduto())}
-
-                    </p>
-
-
-
-                    <p className="text-xs text-gray-500 mt-1">
-
-                      Hora: {formatarMoeda(custoOperacionalPorHora())}
-
-                    </p>
-
-                  </div>
-
-
-
-                  <div className="bg-gray-900 rounded-xl p-4">
-
-                    <p className="text-sm text-gray-300">
-
-                      Custo total
-
-                    </p>
-
-
-
-                    <p className="text-lg font-bold text-white mt-2">
-
-                      {formatarMoeda(custoTotalProduto())}
-
-                    </p>
-
-                  </div>
-
-
-
-                </div>
-
-
-
-              </div>
-
-
-
+              )}
             </section>
 
-
-
-            {/* Formação do preço */}
-
-            <section className="bg-white rounded-2xl border border-gray-200 shadow-sm">
-
-
-
-              <div className="px-5 py-4 border-b border-gray-100">
-
-                <h3 className="text-lg font-bold text-gray-800">
-
-                  Formação do preço
-
-                </h3>
-
-
-
-                <p className="text-sm text-gray-500 mt-1">
-
-                  Comparação entre custo, margem e condições de pagamento.
-
-                </p>
-
+            {/* B — venda avulsa */}
+            <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+              <h3 className="text-lg font-bold text-gray-800">B. Custo para Venda Avulsa</h3>
+              <p className="text-sm text-gray-500 mt-1">Custo de Produção + Embalagem Avulsa.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+                {[
+                  ['Custo de Produção', custoProducao()],
+                  ['Embalagem Avulsa', custoEmbalagemPadrao()],
+                  ['Custo para Venda Avulsa', custoTotalProduto()]
+                ].map(([rotulo, valor]) => (
+                  <div key={rotulo} className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-sm text-gray-600">{rotulo}</p>
+                    <p className="text-lg font-bold text-gray-800 mt-2">{formatarMoeda(valor)}</p>
+                  </div>
+                ))}
               </div>
-
-
-
-              <div className="p-5">
-
-
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-
-
-
-                  <div className="border border-gray-200 rounded-xl p-4">
-
-                    <p className="text-sm text-gray-500">
-
-                      Custo total
-
-                    </p>
-
-
-
-                    <p className="text-xl font-bold text-gray-800 mt-2">
-
-                      {formatarMoeda(custoTotalProduto())}
-
-                    </p>
-
-                  </div>
-
-
-
-                  <div className="border border-green-200 bg-green-50 rounded-xl p-4">
-
-                    <p className="text-sm text-green-700">
-
-                      Preço PIX sugerido
-
-                    </p>
-
-
-
-                    <p className="text-xl font-bold text-green-800 mt-2">
-
-                      {formatarMoeda(precoSugerido())}
-
-                    </p>
-
-                  </div>
-
-
-
-                  <div className="border border-blue-200 bg-blue-50 rounded-xl p-4">
-
-                    <p className="text-sm text-blue-700">
-
-                      Preço no cartão
-
-                    </p>
-
-
-
-                    <p className="text-xl font-bold text-blue-800 mt-2">
-
-                      {formatarMoeda(precoCartao())}
-
-                    </p>
-
-                  </div>
-
-
-
-                  <div className="border border-violet-200 bg-violet-50 rounded-xl p-4">
-
-                    <p className="text-sm text-violet-700">
-
-                      Desconto equivalente no PIX
-
-                    </p>
-
-
-
-                    <p className="text-xl font-bold text-violet-800 mt-2">
-
-                      {formatarNumero(descontoPixPercentual())}%
-
-                    </p>
-
-                  </div>
-
-
-
-                  <div className="border border-amber-200 bg-amber-50 rounded-xl p-4">
-
-                    <p className="text-sm text-amber-700">
-
-                      Lucro sugerido
-
-                    </p>
-
-
-
-                    <p className="text-xl font-bold text-amber-800 mt-2">
-
-                      {formatarMoeda(lucroSugerido())}
-
-                    </p>
-
-                  </div>
-
-
-
-                  <div className="border border-gray-200 rounded-xl p-4">
-
-                    <p className="text-sm text-gray-500">
-
-                      Margem real sugerida
-
-                    </p>
-
-
-
-                    <p className="text-xl font-bold text-gray-800 mt-2">
-
-                      {formatarNumero(
-
-                        margemReal(precoSugerido())
-
-                      )}%
-
-                    </p>
-
-                  </div>
-
-
-
-                </div>
-
-
-
-              </div>
-
-
-
+              {semEmbalagemEdicao && modoEdicao && (
+                <p className="text-sm text-gray-600 mt-3">Prévia sem embalagem: somente a Embalagem Avulsa foi zerada. O Custo de Produção permanece com a parcela de sacolas.</p>
+              )}
+              {calculoAtual && !semEmbalagemEdicao && !calculoAtual.embalagem_configurada && (
+                <p className="text-sm text-amber-700 mt-3">Embalagem Avulsa ainda não configurada.</p>
+              )}
             </section>
 
-
-
-            {/* Preço final */}
-
-            <section className="bg-white rounded-2xl border border-gray-200 shadow-sm">
-
-
-
-              <div className="px-5 py-4 border-b border-gray-100">
-
-                <h3 className="text-lg font-bold text-gray-800">
-
-                  Definição do preço final
-
-                </h3>
-
-
-
-                <p className="text-sm text-gray-500 mt-1">
-
-                  Defina o valor que será utilizado no catálogo e nos pedidos.
-
-                </p>
-
-              </div>
-
-
-
-              <div className="p-5">
-
-
-
-                <div>
-
-
-
-                  <div className="flex-1">
-
-
-
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-
-                      Preço final de venda
-
-                    </label>
-
-
-
+            {/* C — preço */}
+            <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+              <h3 className="text-lg font-bold text-gray-800">C. Formação do Preço</h3>
+              <p className="text-sm text-gray-500 mt-1">O preço sugerido é uma referência. Você define o preço final.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-4">
+                {[
+                  ['Margem Desejada', `${formatarNumero(margemProduto())}%`],
+                  ['Preço Sugerido', formatarMoeda(precoCartao())]
+                ].map(([rotulo, valor]) => (
+                  <div key={rotulo} className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-sm text-gray-600">{rotulo}</p>
+                    <p className="text-lg font-bold text-gray-800 mt-2">{valor}</p>
+                  </div>
+                ))}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-sm text-gray-600">
+                    Preço Final
+                  </p>
+                  {modoEdicao ? (
                     <input
-
+                      aria-label="Preço Final"
                       type="number"
-
                       min="0"
-
                       step="0.01"
-
                       value={precoFinal}
-
-                      disabled={!modoEdicao}
-
-                      onChange={event =>
-
-                        setPrecoFinal(event.target.value)
-
-                      }
-
+                      onChange={event => setPrecoFinal(event.target.value)}
                       placeholder="0,00"
-
-                      className="
-
-                        w-full
-
-                        border border-gray-300
-
-                        rounded-xl
-
-                        px-4 py-3
-
-                        outline-none
-
-                        focus:ring-2
-
-                        focus:ring-gray-200
-
-                        focus:border-gray-400
-
-                        disabled:bg-gray-100
-
-                        disabled:text-gray-600
-
-                        disabled:cursor-not-allowed
-
-                      "
-
+                      className="w-full mt-2 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-gray-200 focus:border-gray-400"
                     />
-
-
-
-
-
-                  </div>
-
-
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
-
-
-
-                    <div className="bg-gray-50 rounded-xl p-4">
-
-                      <p className="text-sm text-gray-500">
-
-                        Preço informado
-
-                      </p>
-
-
-
-                      <p className="font-bold text-gray-800 mt-2">
-
-                        {formatarMoeda(precoFinal)}
-
-                      </p>
-
-                    </div>
-
-
-
-                    <div className="bg-gray-50 rounded-xl p-4">
-
-                      <p className="text-sm text-gray-500">
-
-                        Lucro no preço final
-
-                      </p>
-
-
-
-                      <p
-
-                        className={`
-
-                        font-bold mt-2
-
-                        ${lucroNoPrecoFinal() >= 0
-
-                            ? 'text-green-700'
-
-                            : 'text-red-700'
-
-                          }
-
-                      `}
-
-                      >
-
-                        {formatarMoeda(lucroNoPrecoFinal())}
-
-                      </p>
-
-                    </div>
-
-
-
-                    <div className="bg-gray-50 rounded-xl p-4">
-
-                      <p className="text-sm text-gray-500">
-
-                        Margem no preço final
-
-                      </p>
-
-
-
-                      <p className="font-bold text-gray-800 mt-2">
-
-                        {formatarNumero(
-
-                          margemReal(precoFinal)
-
-                        )}%
-
-                      </p>
-
-                    </div>
-
-
-
-                  </div>
-
-
-
+                  ) : (
+                    <p className="text-lg font-bold text-gray-800 mt-2">
+                      {formatarMoeda(precoFinal)}
+                    </p>
+                  )}
                 </div>
-
-
-
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-sm text-gray-600">Margem Real</p>
+                  <p className="text-lg font-bold text-gray-800 mt-2">
+                    {margemReal(precoFinal) === null ? '—' : `${formatarNumero(margemReal(precoFinal))}%`}
+                  </p>
+                </div>
               </div>
-
-
-
+              <p className="text-xs text-gray-500 mt-3">O Preço Sugerido já considera a taxa de cartão de {formatarNumero(calculoAtual?.taxa_cartao)}%.</p>
             </section>
+
+            {/* D — histórico, depois da economia corrente */}
+            {!modoNovoCadastro && produto && (
+              <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+                <h3 className="text-lg font-bold text-gray-800">D. Última Precificação × Custo Atual</h3>
+                <p className="text-sm text-gray-500 mt-1">Mudanças de custo não alteram o Preço Final.</p>
+                {!ultimaPrecificacao ? (
+                  <p className="text-sm text-amber-700 mt-4">Ainda não há histórico para comparação.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 text-sm">
+                    <div className="rounded-xl bg-gray-50 p-4">
+                      <p className="font-semibold mb-2">Na última Precificação</p>
+                      <p>Custo de Produção: {formatarMoeda(ultimaPrecificacao.custo_producao)}</p>
+                      <p>Embalagem Avulsa: {formatarMoeda(ultimaPrecificacao.custo_embalagem_avulsa)}</p>
+                      <p>Custo para Venda Avulsa: {formatarMoeda(ultimaPrecificacao.custo_venda_avulsa)}</p>
+                      <p>Preço Final: {formatarMoeda(ultimaPrecificacao.preco_final_oficial)}</p>
+                      <p>Margem Real: {formatarNumero(ultimaPrecificacao.margem_real)}%</p>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 p-4">
+                      <p className="font-semibold mb-2">Hoje</p>
+                      <p>Custo de Produção Atual: {formatarMoeda(calculoAtual?.custo_producao)}</p>
+                      <p>Embalagem Avulsa Atual: {formatarMoeda(calculoAtual?.custo_embalagem_avulsa)}</p>
+                      <p>Custo para Venda Avulsa Atual: {formatarMoeda(calculoAtual?.custo_venda_avulsa)}</p>
+                      <p>Preço Final: {formatarMoeda(calculoAtual?.preco_oficial_atual)}</p>
+                      <p>Margem Atual: {formatarNumero(calculoAtual?.margem_atual)}%</p>
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+
+
+
 
 
 

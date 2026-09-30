@@ -8,6 +8,7 @@ import Sidebar from '../../components/Sidebar'
 
 import { supabase } from '../../lib/supabase'
 import { obterTotalCustosOperacionais } from '../../lib/custosOperacionais'
+import { calcularCustoMensalSacolas } from '../../lib/sacolasV2'
 
 
 
@@ -155,6 +156,9 @@ const [embalagemPadrao, setEmbalagemPadrao] = useState('3')
 
 
 const [sacolasPorPedido, setSacolasPorPedido] = useState('1')
+const [estimativaPedidosMes, setEstimativaPedidosMes] = useState('0')
+const [sacolaEstoqueId, setSacolaEstoqueId] = useState('')
+const [sacolasDisponiveis, setSacolasDisponiveis] = useState([])
 
 
 
@@ -175,12 +179,26 @@ const [sacolasPorPedido, setSacolasPorPedido] = useState('1')
 
 
   carregarConfiguracoesSistema()
+  carregarSacolasDisponiveis()
 
     carregarCustosOperacionais()
 
 
 
 }, [])
+
+  async function carregarSacolasDisponiveis() {
+    const { data, error } = await supabase.from('estoque')
+      .select('id,nome,custo_unitario')
+      .eq('ativo', true)
+      .eq('categoria_item', 'embalagem')
+      .order('nome')
+    if (error) {
+      console.error('Erro ao carregar itens de embalagem do Estoque:', error)
+      return
+    }
+    setSacolasDisponiveis(data || [])
+  }
 
 
 
@@ -336,41 +354,14 @@ const [sacolasPorPedido, setSacolasPorPedido] = useState('1')
 
 
 
-setDescontoPixAutomatico(
-
-
-
-  config.desconto_pix_automatico ?? true
-
-
-
-)
 
 
 
 
-
-
-
-setMostrarDescontoPix(
-
-
-
-  config.mostrar_desconto_pix_orcamento ?? true
-
-
-
-)
 
 
 
   }
-
-
-
-
-
-
 
   async function carregarConfiguracoesPrecificacao() {
 
@@ -433,7 +424,9 @@ setMostrarDescontoPix(
 
 
     setPrecificacaoId(config.id)
-setProLabore(config.pro_labore_desejado || '')
+    setDescontoPixAutomatico(config.desconto_pix_automatico ?? true)
+    setMostrarDescontoPix(config.mostrar_desconto_pix_orcamento ?? true)
+    setProLabore(config.pro_labore_desejado || '')
 
 
 
@@ -502,6 +495,11 @@ setValidadeOrcamentoDias(
 
 
     .select('*')
+
+
+
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
 
 
 
@@ -582,6 +580,11 @@ setValidadeOrcamentoDias(
 
 
   )
+
+  setEstimativaPedidosMes(
+    config.estimativa_pedidos_mes ?? 0
+  )
+  setSacolaEstoqueId(config.sacola_estoque_id || '')
 
 
 
@@ -1010,11 +1013,9 @@ pro_labore_desejado: Number(proLabore || 0),
 
 
 
-  quantidade_sacolas_por_pedido:
-
-
-
-    Number(sacolasPorPedido || 1)
+  quantidade_sacolas_por_pedido: Number(sacolasPorPedido || 0),
+  estimativa_pedidos_mes: Number(estimativaPedidosMes || 0),
+  sacola_estoque_id: sacolaEstoqueId || null
 
 
 
@@ -1026,11 +1027,17 @@ pro_labore_desejado: Number(proLabore || 0),
 
 
 
+if (!Number.isInteger(Number(sacolasPorPedido)) || Number(sacolasPorPedido) < 0 ||
+    !Number.isInteger(Number(estimativaPedidosMes)) || Number(estimativaPedidosMes) < 0) {
+  alert('Informe quantidades inteiras e não negativas para sacolas e pedidos mensais.')
+  return
+}
+
 if (configSistemaId) {
 
 
 
-  await supabase
+  const { error: erroSistema } = await supabase
 
 
 
@@ -1043,6 +1050,12 @@ if (configSistemaId) {
 
 
     .eq('id', configSistemaId)
+
+  if (erroSistema) {
+    console.error('Erro ao salvar planejamento de sacolas:', erroSistema)
+    alert('Não foi possível salvar o planejamento de sacolas.')
+    return
+  }
 
 
 
@@ -1149,6 +1162,11 @@ if (configSistemaId) {
 
 
 
+
+  const sacolaSelecionada = sacolasDisponiveis.find(item => item.id === sacolaEstoqueId)
+  const custoMensalSacolas = calcularCustoMensalSacolas(
+    estimativaPedidosMes, sacolasPorPedido, sacolaSelecionada?.custo_unitario ?? 0
+  )
 
   return (
 
@@ -2428,95 +2446,6 @@ if (configSistemaId) {
 
 
 
-    <label className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
-
-
-
-      <input
-
-
-
-        type="checkbox"
-
-
-
-        checked={descontoPixAutomatico}
-
-
-
-        onChange={(e) => setDescontoPixAutomatico(e.target.checked)}
-
-
-
-      />
-
-
-
-
-
-
-
-      <span className="text-sm text-gray-700">
-
-
-
-        Calcular desconto PIX automaticamente
-
-
-
-      </span>
-
-
-
-    </label>
-
-
-
-
-
-
-
-    <label className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
-
-
-
-      <input
-
-
-
-        type="checkbox"
-
-
-
-        checked={mostrarDescontoPix}
-
-
-
-        onChange={(e) => setMostrarDescontoPix(e.target.checked)}
-
-
-
-      />
-
-
-
-
-
-
-
-      <span className="text-sm text-gray-700">
-
-
-
-        Mostrar observação de desconto PIX no orçamento
-
-
-
-      </span>
-
-
-
-    </label>
 
 
 
@@ -2532,15 +2461,6 @@ if (configSistemaId) {
 
 
 
-  <p className="text-sm text-gray-500 mt-4">
-
-
-
-    A taxa do cartão será usada para calcular o valor de referência e o desconto PIX equivalente.
-
-
-
-  </p>
 
 
 
@@ -2584,193 +2504,73 @@ if (configSistemaId) {
 
 
 
-  <div className="grid grid-cols-2 gap-4">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-
-
-
-
-
+  
 
     <div>
-
-
-
       <label className="block text-sm font-medium text-gray-700 mb-2">
-
-
-
-        Embalagem padrão (R$)
-
-
-
+        Sacola padrão do Estoque
       </label>
-
-
-
-
-
-
-
-      <input
-
-
-
-        type="number"
-
-
-
-        step="0.01"
-
-
-
-        value={embalagemPadrao}
-
-
-
-        onChange={(e) =>
-
-
-
-          setEmbalagemPadrao(
-
-
-
-            e.target.value
-
-
-
-          )
-
-
-
-        }
-
-
-
+      <select
+        value={sacolaEstoqueId}
+        onChange={event => setSacolaEstoqueId(event.target.value)}
         className="w-full border rounded-xl px-4 py-3"
-
-
-
-      />
-
-
-
-
-
-
-
-      <p className="text-xs text-gray-500 mt-2">
-
-
-
-        Custo interno utilizado na
-
-
-
-        precificação dos produtos e kits.
-
-
-
-      </p>
-
-
-
+      >
+        <option value="">Nenhuma sacola padrão selecionada</option>
+        {sacolasDisponiveis.map(item => (
+          <option key={item.id} value={item.id}>{item.nome}</option>
+        ))}
+      </select>
+      {sacolaEstoqueId && !sacolaSelecionada && (
+        <p className="text-xs text-amber-700 mt-2">A sacola selecionada não está entre os itens ativos de embalagem. Confira o item de Estoque.</p>
+      )}
     </div>
-
-
-
-
-
-
-
     <div>
-
-
-
       <label className="block text-sm font-medium text-gray-700 mb-2">
-
-
-
-        Sacolas automáticas por pedido
-
-
-
+        Quantidade padrão de sacolas por pedido
       </label>
-
-
-
-
-
-
-
       <input
-
-
-
         type="number"
-
-
-
+        min="0"
+        step="1"
         value={sacolasPorPedido}
-
-
-
-        onChange={(e) =>
-
-
-
-          setSacolasPorPedido(
-
-
-
-            e.target.value
-
-
-
-          )
-
-
-
-        }
-
-
-
+        onChange={event => setSacolasPorPedido(event.target.value)}
         className="w-full border rounded-xl px-4 py-3"
-
-
-
       />
-
-
-
-
-
-
-
       <p className="text-xs text-gray-500 mt-2">
-
-
-
-        Quantidade padrão baixada do
-
-
-
-        estoque por pedido.
-
-
-
+        Quantidade usada para estimar o custo mensal das sacolas. Não representa o consumo efetivo de cada pedido.
       </p>
-
-
-
     </div>
-
-
-
-
-
-
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Estimativa de pedidos por mês
+      </label>
+      <input
+        type="number"
+        min="0"
+        step="1"
+        value={estimativaPedidosMes}
+        onChange={event => setEstimativaPedidosMes(event.target.value)}
+        className="w-full border rounded-xl px-4 py-3"
+      />
+      <p className="text-xs text-gray-500 mt-2">
+        Estimativa editável usada no custo econômico das sacolas.
+      </p>
+    </div>
+    <div className="rounded-xl bg-gray-50 p-4">
+      <p className="text-sm text-gray-600">Custo unitário atual da sacola</p>
+      <p className="font-semibold text-gray-800 mt-1">
+        {sacolaSelecionada ? formatarMoeda(sacolaSelecionada.custo_unitario) : '—'}
+      </p>
+      <p className="text-sm text-gray-600 mt-3">Custo mensal estimado das sacolas</p>
+      <p className="font-semibold text-gray-800 mt-1">
+        {sacolaSelecionada && custoMensalSacolas !== null ? formatarMoeda(custoMensalSacolas) : '—'}
+      </p>
+      <p className="text-xs text-gray-500 mt-2">
+        Estimativa de pedidos × sacolas por pedido × custo unitário atual do Estoque.
+      </p>
+    </div>
 
   </div>
 
@@ -2816,7 +2616,7 @@ if (configSistemaId) {
 
 
 
-        📦 Embalagem padrão → custo interno.
+        📦 Embalagem Avulsa → custo calculado pelos componentes associados.
 
 
 
@@ -2832,7 +2632,7 @@ if (configSistemaId) {
 
 
 
-        🛍 Sacola → baixa automática por pedido.
+        🛍 Sacola → custo mensal estimado incluído nos Custos Operacionais.
 
 
 
@@ -2844,15 +2644,6 @@ if (configSistemaId) {
 
 
 
-      <li>
-
-
-
-        🎁 Caixa MDF → item opcional vendido.
-
-
-
-      </li>
 
 
 

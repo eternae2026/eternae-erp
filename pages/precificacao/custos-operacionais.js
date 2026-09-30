@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Sidebar from '../../components/Sidebar'
 import CustoOperacionalModal from '../../components/CustoOperacionalModal'
 import { supabase } from '../../lib/supabase'
+import { obterResumoSacolasV2 } from '../../lib/sacolasV2'
 
 export default function CustosOperacionais() {
   const [custos, setCustos] = useState([])
@@ -11,6 +12,8 @@ export default function CustosOperacionais() {
   const [custoEditando, setCustoEditando] = useState(null)
   const [alterandoStatusId, setAlterandoStatusId] =
     useState(null)
+  const [resumoSacolas, setResumoSacolas] = useState(null)
+  const [erroSacolas, setErroSacolas] = useState('')
 
   async function carregarCustos() {
     setCarregando(true)
@@ -38,6 +41,12 @@ export default function CustosOperacionais() {
 
   useEffect(() => {
     carregarCustos()
+    obterResumoSacolasV2()
+      .then(setResumoSacolas)
+      .catch(error => {
+        console.error('Não foi possível consultar a parcela econômica das sacolas:', error)
+        setErroSacolas('Parcela de sacolas indisponível. Confira a configuração da sacola padrão.')
+      })
   }, [])
 
   function formatarMoeda(valor) {
@@ -267,7 +276,7 @@ export default function CustosOperacionais() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <p className="text-sm text-gray-500">
               Custos ativos
@@ -280,14 +289,32 @@ export default function CustosOperacionais() {
 
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <p className="text-sm text-gray-500">
-              Total mensal ativo
+              Custos cadastrados ativos
             </p>
 
             <p className="text-2xl font-bold text-gray-800 mt-1">
               {formatarMoeda(totalMensalAtivo)}
             </p>
           </div>
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <p className="text-sm text-gray-500">Sacolas — estimativa mensal derivada</p>
+            <p className="text-2xl font-bold text-gray-800 mt-1">
+              {resumoSacolas?.custoMensal == null ? '—' : formatarMoeda(resumoSacolas.custoMensal)}
+            </p>
+            {resumoSacolas && (
+              <p className="text-xs text-gray-500 mt-2">
+                {resumoSacolas.configuracao?.estimativa_pedidos_mes ?? 0} pedidos × {resumoSacolas.configuracao?.quantidade_sacolas_por_pedido ?? 0} sacola(s) × {formatarMoeda(resumoSacolas.custoUnitario)}
+              </p>
+            )}
+          </div>
+          <div className="bg-gray-900 rounded-2xl p-5 shadow-sm">
+            <p className="text-sm text-gray-300">Total mensal para Precificação</p>
+            <p className="text-2xl font-bold text-white mt-1">
+              {resumoSacolas?.custoMensal == null ? '—' : formatarMoeda(totalMensalAtivo + resumoSacolas.custoMensal)}
+            </p>
+          </div>
         </div>
+        {erroSacolas && <p role="alert" className="text-amber-700 mb-6">{erroSacolas}</p>}
 
         <div className="mb-6">
           <div className="relative w-full md:w-96">
@@ -427,9 +454,11 @@ export default function CustosOperacionais() {
         </div>
 
         <div className="mt-4 text-sm text-gray-500">
-          Os custos cadastrados nesta tela ainda não
-          alteram automaticamente a precificação dos
-          produtos.
+          O total considerado na Precificação inclui{' '}
+          {resumoSacolas?.custoMensal == null ? 'a parcela de sacolas ainda indisponível' : formatarMoeda(resumoSacolas.custoMensal)}
+          /mês referentes à estimativa de sacolas, calculada a partir da sacola padrão,
+          da quantidade por pedido e da estimativa mensal de pedidos. A sacola não é
+          cadastrada como linha manual. Mudanças de custo não alteram o Preço Final.
         </div>
 
         <CustoOperacionalModal

@@ -11,6 +11,8 @@ export default function Precificacao() {
   const [produtoSelecionadoId, setProdutoSelecionadoId] = useState('')
   const [produtoSelecionado, setProdutoSelecionado] = useState(null)
   const [composicao, setComposicao] = useState([])
+  const [composicaoCarregadaPara, setComposicaoCarregadaPara] = useState('')
+  const [erroComposicao, setErroComposicao] = useState('')
   const [precoFinal, setPrecoFinal] = useState('')
   const [drawerAberto, setDrawerAberto] = useState(false)
   const [busca, setBusca] = useState('')
@@ -57,33 +59,6 @@ export default function Precificacao() {
     setProdutos(data || [])
   }
 
-  async function carregarComposicao(produtoId) {
-    if (!produtoId) {
-      setComposicao([])
-      return
-    }
-
-    const { data, error } = await supabase
-      .from('produto_composicao')
-      .select(`
-        *,
-        estoque (
-          id,
-          nome,
-          custo_unitario,
-          categoria_item
-        )
-      `)
-      .eq('produto_id', produtoId)
-
-    if (error) {
-      console.log('Erro ao carregar composição:', error)
-      return
-    }
-
-    setComposicao(data || [])
-  }
-
   async function carregarDados() {
     setCarregando(true)
 
@@ -101,9 +76,12 @@ export default function Precificacao() {
   }, [])
 
   useEffect(() => {
+    let ativo = true
     if (!produtoSelecionadoId) {
       setProdutoSelecionado(null)
       setComposicao([])
+      setComposicaoCarregadaPara('')
+      setErroComposicao('')
       setPrecoFinal('')
       return
     }
@@ -114,7 +92,36 @@ export default function Precificacao() {
 
     setProdutoSelecionado(produto || null)
     setPrecoFinal(produto?.preco_final || produto?.preco || '')
-    carregarComposicao(produtoSelecionadoId)
+    setComposicao([])
+    setComposicaoCarregadaPara('')
+    setErroComposicao('')
+
+    async function carregarComposicao() {
+      const { data, error } = await supabase
+        .from('produto_composicao')
+        .select(`
+          *,
+          estoque (
+            id,
+            nome,
+            custo_unitario,
+            categoria_item
+          )
+        `)
+        .eq('produto_id', produtoSelecionadoId)
+
+      if (!ativo) return
+      if (error) {
+        console.error('Erro ao carregar Ficha Técnica:', error)
+        setErroComposicao('Não foi possível carregar a Ficha Técnica. Atualize a página antes de editar.')
+        return
+      }
+      setComposicao(data || [])
+      setComposicaoCarregadaPara(String(produtoSelecionadoId))
+    }
+
+    carregarComposicao()
+    return () => { ativo = false }
   }, [produtoSelecionadoId, produtos])
 
   const produtosFiltrados = useMemo(() => {
@@ -143,6 +150,9 @@ export default function Precificacao() {
   }
 
   function abrirPrecificacao(produto) {
+    setComposicao([])
+    setComposicaoCarregadaPara('')
+    setErroComposicao('')
     setProdutoSelecionadoId(produto.id)
     setProdutoSelecionado(produto)
     setPrecoFinal(produto.preco_final || produto.preco || '')
@@ -153,6 +163,8 @@ export default function Precificacao() {
   setProdutoSelecionado(null)
   setProdutoSelecionadoId('')
   setComposicao([])
+  setComposicaoCarregadaPara('')
+  setErroComposicao('')
   setPrecoFinal('')
   setModoNovoCadastro(true)
   setDrawerAberto(true)
@@ -595,6 +607,8 @@ export default function Precificacao() {
   configuracao={configuracao}
   totalCustosOperacionais={totalCustosOperacionais}
   composicao={composicao}
+  composicaoPronta={Boolean(produtoSelecionado?.id) && composicaoCarregadaPara === String(produtoSelecionado?.id)}
+  erroComposicao={erroComposicao}
   precoFinal={precoFinal}
   setPrecoFinal={setPrecoFinal}
   onPrecoSalvo={atualizarProdutoPrecificado}

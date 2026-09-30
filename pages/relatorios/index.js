@@ -3,6 +3,7 @@ import RelatorioDetalheModal from '../../components/RelatorioDetalheModal'
 import Sidebar from '../../components/Sidebar'
 import { supabase } from '../../lib/supabase'
 import { obterTotalCustosOperacionais } from '../../lib/custosOperacionais'
+import { obterCustoAtualProduto } from '../../lib/precificacaoV2'
 
 export default function Relatorios() {
   const [movimentacoes, setMovimentacoes] = useState([])
@@ -176,7 +177,15 @@ export default function Relatorios() {
       setPedidos(resultadoPedidos.data || [])
       setConfiguracao(resultadoConfiguracao.data?.[0] || null)
       setTotalCustosOperacionais(Number(totalCustosOperacionaisAtivos || 0))
-      setProdutos(resultadoProdutos.data || [])
+      setProdutos(await Promise.all((resultadoProdutos.data || []).map(async produto => {
+        try {
+          const calculo_v2 = await obterCustoAtualProduto(produto.id)
+          return { ...produto, calculo_v2 }
+        } catch (error) {
+          console.error('Custo V2 indisponível no relatório:', produto.id, error)
+          return { ...produto, calculo_v2: null }
+        }
+      })))
     } catch (error) {
       console.log('Erro inesperado ao carregar relatórios:', error)
       setErroCarregamento(
@@ -618,92 +627,27 @@ export default function Relatorios() {
     return rankingItens
   }
 
-  function custosOperacionaisTotaisPrecificacao() {
-    return Number(totalCustosOperacionais || 0)
-  }
-
-  function horasMensaisPrecificacao() {
-    if (!configuracao) return 0
-
-    return (
-      Number(configuracao.horas_por_dia || 0) *
-      Number(configuracao.dias_por_semana || 0) *
-      4.33
-    )
-  }
-
-  function valorHoraPrecificacao() {
-    const horas = horasMensaisPrecificacao()
-    if (horas <= 0) return 0
-
-    return Number(configuracao?.pro_labore_desejado || 0) / horas
-  }
-
-  function custoOperacionalPorHoraPrecificacao() {
-    const horas = horasMensaisPrecificacao()
-    if (horas <= 0) return 0
-
-    return custosOperacionaisTotaisPrecificacao() / horas
-  }
-
+  // A seção de Precificação V2 usa exclusivamente a fonte econômica central.
   function custoInsumosProduto(produto) {
-    return (produto.produto_composicao || []).reduce((total, item) => {
-      return total +
-        Number(item.estoque?.custo_unitario || 0) *
-        Number(item.quantidade || 0)
-    }, 0)
+    return produto.calculo_v2 ? Number(produto.calculo_v2.custo_ficha_tecnica) : null
   }
-
-  function horasProduto(produto) {
-    return Number(produto.tempo_producao || 0) / 60
-  }
-
   function custoMaoDeObraProduto(produto) {
-    return horasProduto(produto) * valorHoraPrecificacao()
+    return produto.calculo_v2 ? Number(produto.calculo_v2.custo_mao_obra) : null
   }
-
   function custoOperacionalProduto(produto) {
-    return horasProduto(produto) * custoOperacionalPorHoraPrecificacao()
+    return produto.calculo_v2 ? Number(produto.calculo_v2.custo_operacional) : null
   }
-
   function custoTotalProduto(produto) {
-    return (
-      custoInsumosProduto(produto) +
-      custoMaoDeObraProduto(produto) +
-      custoOperacionalProduto(produto)
-    )
+    return produto.calculo_v2 ? Number(produto.calculo_v2.custo_venda_avulsa) : null
   }
-
   function precoAtualProduto(produto) {
-    return Number(produto.preco_final || produto.preco || 0)
+    return produto.calculo_v2 ? Number(produto.calculo_v2.preco_oficial_atual) : Number(produto.preco_final || produto.preco || 0)
   }
-
   function lucroEstimadoProduto(produto) {
-    return precoAtualProduto(produto) - custoTotalProduto(produto)
+    return produto.calculo_v2 ? precoAtualProduto(produto) - custoTotalProduto(produto) : null
   }
-
   function margemRealProduto(produto) {
-    const preco = precoAtualProduto(produto)
-    if (preco <= 0) return 0
-
-    return (lucroEstimadoProduto(produto) / preco) * 100
-  }
-
-  function statusMargemProduto(produto) {
-    const margem = Number(margemRealProduto(produto).toFixed(2))
-    const margemDesejada = Number(
-      produto.margem_lucro || configuracao?.margem_padrao || 0
-    )
-
-    if (margem >= margemDesejada) return 'Saudável'
-    if (margem >= margemDesejada * 0.75) return 'Reduzida'
-    return 'Crítica'
-  }
-
-  function corStatusMargem(status) {
-    if (status === 'Saudável') return 'bg-green-100 text-green-700'
-    if (status === 'Reduzida') return 'bg-yellow-100 text-yellow-700'
-    return 'bg-red-100 text-red-700'
+    return produto.calculo_v2 ? Number(produto.calculo_v2.margem_atual) : null
   }
 
   function custosOperacionaisTotais() {
@@ -1113,14 +1057,15 @@ export default function Relatorios() {
       'analise-de-precificacao.csv',
       produtos.map(produto => ({
         Produto: produto.nome,
-        Insumos: formatarMoeda(custoInsumosProduto(produto)),
-        Mao_de_obra: formatarMoeda(custoMaoDeObraProduto(produto)),
-        Custo_operacional: formatarMoeda(custoOperacionalProduto(produto)),
-        Custo_total: formatarMoeda(custoTotalProduto(produto)),
+        Ficha_tecnica: produto.calculo_v2 ? formatarMoeda(custoInsumosProduto(produto)) : 'Indisponível',
+        Mao_de_obra: produto.calculo_v2 ? formatarMoeda(custoMaoDeObraProduto(produto)) : 'Indisponível',
+        Custos_operacionais: produto.calculo_v2 ? formatarMoeda(custoOperacionalProduto(produto)) : 'Indisponível',
+        Custo_de_producao: produto.calculo_v2 ? formatarMoeda(produto.calculo_v2.custo_producao) : 'Indisponível',
+        Embalagem_avulsa: produto.calculo_v2 ? formatarMoeda(produto.calculo_v2.custo_embalagem_avulsa) : 'Indisponível',
+        Custo_para_venda_avulsa: produto.calculo_v2 ? formatarMoeda(custoTotalProduto(produto)) : 'Indisponível',
         Preco_atual: formatarMoeda(precoAtualProduto(produto)),
-        Lucro_estimado: formatarMoeda(lucroEstimadoProduto(produto)),
-        Margem_real: formatarPercentual(margemRealProduto(produto)),
-        Status: statusMargemProduto(produto)
+        Lucro_estimado: produto.calculo_v2 ? formatarMoeda(lucroEstimadoProduto(produto)) : 'Indisponível',
+        Margem_atual: produto.calculo_v2 ? formatarPercentual(margemRealProduto(produto)) : 'Indisponível'
       }))
     )
   }
@@ -1530,7 +1475,7 @@ export default function Relatorios() {
             <CardRelatorio
               icone="🧮"
               titulo="Análise de precificação"
-              descricao="Custos, preço atual, lucro estimado, margem real e saúde da margem."
+              descricao="Custos, preço atual, lucro estimado e margem real."
               detalhe={`${produtos.length} produto(s) analisado(s)`}
               onClick={() => setModalAberto('precificacao')}
               destaque="amber"
@@ -2135,73 +2080,45 @@ export default function Relatorios() {
           </div>
 
           <div className="max-h-[55vh] overflow-auto border rounded-2xl">
-            <table className="w-full min-w-[1100px]">
+            <table className="w-full min-w-[1450px]">
               <thead className="bg-gray-100 sticky top-0 z-10 border-b border-gray-200">
                 <tr>
-                  <th className="text-left p-4 text-gray-600">Produto</th>
-                  <th className="text-right p-4 text-gray-600">Insumos</th>
-                  <th className="text-right p-4 text-gray-600">Mão de obra</th>
-                  <th className="text-right p-4 text-gray-600">Custo operacional</th>
-                  <th className="text-right p-4 text-gray-600">Custo total</th>
-                  <th className="text-right p-4 text-gray-600">Preço atual</th>
-                  <th className="text-right p-4 text-gray-600">Lucro</th>
-                  <th className="text-right p-4 text-gray-600">Margem</th>
-                  <th className="text-center p-4 text-gray-600">Status</th>
+                  {['Produto', 'Ficha Técnica', 'Mão de Obra', 'Custos Operacionais', 'Custo de Produção', 'Embalagem Avulsa', 'Custo para Venda Avulsa', 'Preço Final', 'Lucro estimado', 'Margem Atual'].map(titulo => (
+                    <th key={titulo} className="text-right p-4 text-gray-600 first:text-left">{titulo}</th>
+                  ))}
                 </tr>
               </thead>
-
               <tbody>
-                {produtos.map(produto => {
-                  const status = statusMargemProduto(produto)
-
-                  return (
-                    <tr key={produto.id} className="border-t">
-                      <td className="p-4">
-                        <p className="font-semibold text-gray-800">
-                          {produto.nome}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Tempo: {formatarNumero(produto.tempo_producao || 0)} min
-                        </p>
-                      </td>
-                      <td className="p-4 text-right">
-                        {formatarMoeda(custoInsumosProduto(produto))}
-                      </td>
-                      <td className="p-4 text-right">
-                        {formatarMoeda(custoMaoDeObraProduto(produto))}
-                      </td>
-                      <td className="p-4 text-right">
-                        {formatarMoeda(custoOperacionalProduto(produto))}
-                      </td>
-                      <td className="p-4 text-right font-semibold">
-                        {formatarMoeda(custoTotalProduto(produto))}
-                      </td>
-                      <td className="p-4 text-right font-semibold text-green-700">
-                        {formatarMoeda(precoAtualProduto(produto))}
-                      </td>
-                      <td className="p-4 text-right">
-                        {formatarMoeda(lucroEstimadoProduto(produto))}
-                      </td>
-                      <td className="p-4 text-right">
-                        {formatarPercentual(margemRealProduto(produto))}
-                      </td>
-                      <td className="p-4 text-center">
-                        <span
-                          className={`${corStatusMargem(status)} inline-flex px-2.5 py-1 rounded-full text-xs font-medium`}
-                        >
-                          {status}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-
-                {produtos.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="p-8 text-center text-gray-500">
-                      Nenhum produto cadastrado.
+                {produtos.map(produto => (
+                  <tr key={produto.id} className="border-t">
+                    <td className="p-4">
+                      <p className="font-semibold text-gray-800">{produto.nome}</p>
+                      <p className="text-xs text-gray-500">{formatarNumero(produto.tempo_producao || 0)} min</p>
                     </td>
+                    {produto.calculo_v2 ? (
+                      <>
+                        <td className="p-4 text-right">{formatarMoeda(custoInsumosProduto(produto))}</td>
+                        <td className="p-4 text-right">{formatarMoeda(custoMaoDeObraProduto(produto))}</td>
+                        <td className="p-4 text-right">
+                          {formatarMoeda(custoOperacionalProduto(produto))}
+                          <p className="text-xs text-gray-500">Inclui sacolas estimadas</p>
+                        </td>
+                        <td className="p-4 text-right">{formatarMoeda(produto.calculo_v2.custo_producao)}</td>
+                        <td className="p-4 text-right">{formatarMoeda(produto.calculo_v2.custo_embalagem_avulsa)}</td>
+                        <td className="p-4 text-right font-semibold">{formatarMoeda(custoTotalProduto(produto))}</td>
+                        <td className="p-4 text-right">{formatarMoeda(precoAtualProduto(produto))}</td>
+                        <td className="p-4 text-right">{formatarMoeda(lucroEstimadoProduto(produto))}</td>
+                        <td className="p-4 text-right">{formatarPercentual(margemRealProduto(produto))}</td>
+                      </>
+                    ) : (
+                      <td colSpan={9} className="p-4 text-amber-700">
+                        Custo atual indisponível. Atualize a página para consultar a Precificação.
+                      </td>
+                    )}
                   </tr>
+                ))}
+                {produtos.length === 0 && (
+                  <tr><td colSpan={10} className="p-8 text-center text-gray-500">Nenhum produto cadastrado.</td></tr>
                 )}
               </tbody>
             </table>

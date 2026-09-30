@@ -159,7 +159,7 @@ export default function CustosOperacionais() {
           <h1 style={styles.titulo}>Custos Operacionais</h1>
 
           <p style={styles.subtitulo}>
-            Configure os custos internos de embalagem utilizados pela Eternaê.
+            Parâmetros legados de embalagem e quantidade padrão de sacolas.
           </p>
         </div>
       </div>
@@ -178,12 +178,11 @@ export default function CustosOperacionais() {
 
               <div>
                 <h2 style={styles.tituloCard}>
-                  Embalagens incluídas
+                  Compatibilidade e planejamento
                 </h2>
 
                 <p style={styles.descricaoCard}>
-                  Esses custos entram internamente na formação do preço e não
-                  aparecem no orçamento do cliente.
+                  A embalagem avulsa é calculada pelos componentes associados. A sacola padrão do Estoque participa da estimativa de custo operacional.
                 </p>
               </div>
             </div>
@@ -196,7 +195,7 @@ export default function CustosOperacionais() {
                   htmlFor="embalagemPadrao"
                   style={styles.label}
                 >
-                  Custo da embalagem padrão
+                  Valor legado de embalagem (R$)
                 </label>
 
                 <div style={styles.campoMoeda}>
@@ -221,9 +220,7 @@ export default function CustosOperacionais() {
                 </div>
 
                 <p style={styles.ajuda}>
-                  Use como referência o custo da caixa padrão de maior valor.
-                  Esse custo será considerado na precificação dos produtos e
-                  kits.
+                  Valor antigo mantido por compatibilidade. Não é usado como custo atual da Embalagem Avulsa na Precificação.
                 </p>
               </div>
 
@@ -232,7 +229,7 @@ export default function CustosOperacionais() {
                   htmlFor="quantidadeSacolas"
                   style={styles.label}
                 >
-                  Sacolas automáticas por pedido
+                  Quantidade padrão de sacolas por pedido
                 </label>
 
                 <input
@@ -248,8 +245,7 @@ export default function CustosOperacionais() {
                 />
 
                 <p style={styles.ajuda}>
-                  Quantidade padrão baixada do estoque quando o pedido entrar
-                  em produção, independentemente do número de produtos.
+                  Quantidade usada na estimativa mensal de sacolas. Não representa o consumo efetivo de cada pedido.
                 </p>
               </div>
             </div>
@@ -261,13 +257,11 @@ export default function CustosOperacionais() {
 
               <div style={styles.listaRegras}>
                 <span>
-                  📦 Embalagem padrão: custo interno, sem exibição para o
-                  cliente.
+                  📦 Embalagem Avulsa: custo calculado pelos componentes associados.
                 </span>
 
                 <span>
-                  🛍 Sacola kraft: baixa automática por pedido, sem exibição
-                  para o cliente.
+                  🛍 Sacola padrão: custo mensal estimado nos Custos Operacionais.
                 </span>
 
                 <span>
